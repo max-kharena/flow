@@ -21,17 +21,5 @@
   "branch": {
     "maxLength": 50
   },
-  "checks": [],
-  "pr": {
-    "requiredSections": [
-      "Original task",
-      "What was done",
-      "How to review the code",
-      "Rollback plan",
-      "How to test it manually (QA)"
-    ]
-  },
-  "guard": {
-    "secretPaths": [".env", ".env.*", "*.pem", "*.key", "*.p12", "*.pfx", "*.keystore", "id_rsa*", "id_ed25519*", "*credentials*.json", "service-account*.json"]
-  }
+  "checks": []
 }

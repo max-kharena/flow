@@ -1,18 +1,18 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const PLUGIN_ROOT = fileURLToPath(new URL('..', import.meta.url));
-export const PRE_TOOL_USE = join(PLUGIN_ROOT, 'hooks', 'pre-tool-use.mjs');
-export const SESSION_START = join(PLUGIN_ROOT, 'hooks', 'session-start.mjs');
-export const CLI = join(PLUGIN_ROOT, 'scripts', 'flow.mjs');
+const PRE_TOOL_USE = join(PLUGIN_ROOT, 'hooks', 'pre-tool-use.mjs');
+const SESSION_START = join(PLUGIN_ROOT, 'hooks', 'session-start.mjs');
+const CLI = join(PLUGIN_ROOT, 'scripts', 'flow.mjs');
 
 // Isolate tests from the developer's git config (signing, hooks, templates).
 const gitConfig = join(mkdtempSync(join(tmpdir(), 'flow-gitcfg-')), 'gitconfig');
 writeFileSync(gitConfig, '');
-export const ENV = {
+const ENV = {
   ...process.env,
   GIT_CONFIG_GLOBAL: gitConfig,
   GIT_CONFIG_NOSYSTEM: '1',
@@ -49,8 +49,9 @@ export function sh(cwd, cmd, args) {
 
 export function write(repo, file, text) {
   const full = join(repo, file);
-  mkdirSync(join(full, '..'), { recursive: true });
+  mkdirSync(dirname(full), { recursive: true });
   writeFileSync(full, text);
+  return full;
 }
 
 // A repo with `main` pushed to a bare origin and origin/HEAD set.
@@ -77,35 +78,35 @@ export function checkout(repo, branch) {
   sh(repo, 'git', ['checkout', '--quiet', '-b', branch]);
 }
 
-function runNode(script, input) {
-  const res = spawnSync('node', [script], { input: JSON.stringify(input), env: ENV, encoding: 'utf8' });
+// A directory holding an executable `gh` script, to prepend to PATH.
+export function fakeGh(source) {
+  const bin = mkdtempSync(join(tmpdir(), 'flow-bin-'));
+  writeFileSync(join(bin, 'gh'), source, { mode: 0o755 });
+  return { PATH: `${bin}:${process.env.PATH}` };
+}
+
+function runNode(script, input, env = {}) {
+  const res = spawnSync('node', [script], { input: JSON.stringify(input), env: { ...ENV, ...env }, encoding: 'utf8' });
   if (res.status !== 0) throw new Error(`${script} exited ${res.status}: ${res.stderr}`);
-  return res.stdout.trim() ? JSON.parse(res.stdout) : null;
+  return res.stdout.trim() ? JSON.parse(res.stdout).hookSpecificOutput : null;
 }
 
-// Runs the PreToolUse hook; returns { decision, reason } or null for no decision.
-export function guard(repo, command, toolName = 'Bash') {
-  const out = runNode(PRE_TOOL_USE, { hook_event_name: 'PreToolUse', tool_name: toolName, tool_input: { command }, cwd: repo });
-  return out ? { decision: out.hookSpecificOutput.permissionDecision, reason: out.hookSpecificOutput.permissionDecisionReason } : null;
-}
-
-export function mcpGuard(repo, toolName, toolInput) {
+function preToolUse(repo, toolName, toolInput) {
   const out = runNode(PRE_TOOL_USE, { hook_event_name: 'PreToolUse', tool_name: toolName, tool_input: toolInput, cwd: repo });
-  return out ? out.hookSpecificOutput.permissionDecision : null;
+  return out ? { decision: out.permissionDecision, reason: out.permissionDecisionReason } : null;
 }
+
+// The PreToolUse decision for a shell command: { decision, reason } or null.
+export const guard = (repo, command, toolName = 'Bash') => preToolUse(repo, toolName, { command });
+
+export const mcpGuard = (repo, toolName, toolInput) => preToolUse(repo, toolName, toolInput)?.decision ?? null;
 
 export function sessionStart(repo, source = 'startup', env = {}) {
-  const res = spawnSync('node', [SESSION_START], {
-    input: JSON.stringify({ hook_event_name: 'SessionStart', source, cwd: repo }),
-    env: { ...ENV, ...env },
-    encoding: 'utf8',
-  });
-  if (res.status !== 0) throw new Error(res.stderr);
-  return res.stdout.trim() ? JSON.parse(res.stdout).hookSpecificOutput.additionalContext : '';
+  return runNode(SESSION_START, { hook_event_name: 'SessionStart', source, cwd: repo }, env)?.additionalContext ?? '';
 }
 
-export function cli(repo, args) {
-  const res = spawnSync('node', [CLI, ...args], { cwd: repo, env: ENV, encoding: 'utf8' });
+export function cli(repo, args, env = {}) {
+  const res = spawnSync('node', [CLI, ...args], { cwd: repo, env: { ...ENV, ...env }, encoding: 'utf8' });
   return { code: res.status, json: res.stdout.trim() ? JSON.parse(res.stdout) : null, stderr: res.stderr };
 }
 

@@ -1,16 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { checkout, CONFIG, makeRepo, sessionStart, sh, write } from './helpers.mjs';
+import { checkout, CONFIG, fakeGh, makeRepo, sessionStart, sh, write } from './helpers.mjs';
 
-// A PATH with node and git but a `gh` that always fails, to simulate signed-out.
-function signedOutPath() {
-  const bin = mkdtempSync(join(tmpdir(), 'flow-bin-'));
-  writeFileSync(join(bin, 'gh'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
-  return `${bin}:${process.env.PATH}`;
-}
+// A `gh` that always fails, to simulate being signed out.
+const signedOut = () => fakeGh('#!/bin/sh\nexit 1\n');
 
 test('on a task branch: names the active task', () => {
   const repo = makeRepo();
@@ -46,8 +42,8 @@ test('repo without flow and without the plugin enabled: silent', () => {
 
 test('gh signed out: nudges onboarding on startup', () => {
   const repo = makeRepo();
-  assert.match(sessionStart(repo, 'startup', { PATH: signedOutPath() }), /gh\) is missing or not signed in/);
-  assert.doesNotMatch(sessionStart(repo, 'resume', { PATH: signedOutPath() }), /not signed in/);
+  assert.match(sessionStart(repo, 'startup', signedOut()), /gh\) is missing or not signed in/);
+  assert.doesNotMatch(sessionStart(repo, 'resume', signedOut()), /not signed in/);
 });
 
 test('unaligned Linear automations are flagged on startup', () => {

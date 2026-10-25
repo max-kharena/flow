@@ -14,17 +14,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|PowerShell",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/pre-tool-use.mjs\"",
-            "timeout": 15
-          }
-        ]
-      },
-      {
-        "matcher": "mcp__.*github.*",
+        "matcher": "^(Bash|PowerShell|mcp__.*github.*__(create_pull_request|push_files|create_or_update_file|delete_file))$",
         "hooks": [
           {
             "type": "command",

@@ -1,7 +1,7 @@
 {
   "name": "flow",
   "displayName": "Flow",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Linear → PR delivery flow: pick up a Linear task, ship a human-friendly PR, request reviewers and update Linear, with guardrail hooks.",
   "author": {
     "name": "Max Kharena",

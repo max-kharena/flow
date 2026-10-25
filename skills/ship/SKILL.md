@@ -24,14 +24,17 @@ Plain-language versions count too ("skip the checks", "as a draft").
 
 ## 1. Load the state
 
+With `--no-task "reason"`, first run `node "${CLAUDE_PLUGIN_ROOT}/scripts/flow.mjs" no-task "<reason>"`. Then:
+
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/flow.mjs" status --fetch
+node "${CLAUDE_PLUGIN_ROOT}/scripts/flow.mjs" status --fetch [--base <branch>]
 ```
+
+Pass `--base` only when the user gave one. Every later command that takes `--base` gets the same value.
 
 - Exit code 3: tell the user to run `/flow:onboard`, then stop.
 - If `.claude/flow/ship.md` exists, read it. It overrides this skill where they conflict.
-- With `--no-task "reason"`, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/flow.mjs" no-task "<reason>"` first.
-- If `branchProblems` isn't empty and there's no `noTaskReason`, stop. The branch has to be renamed (`git branch -m <prefix>-<n>/<slug>`), or the user can use `--no-task`.
+- If `branchProblems` isn't empty, stop. The branch has to be renamed (`git branch -m <prefix>-<n>/<slug>`), or the user can use `--no-task`, which clears it.
 - If `onBase` is true, stop: "You're on main. Start a task with /flow:start, or move these changes to a task branch."
 
 ## 2. Pick the mode from `pr`

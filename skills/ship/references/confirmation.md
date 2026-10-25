@@ -21,7 +21,7 @@ Send one message, then wait. Example:
 Rules:
 
 - Show the **full** description, not a summary of it.
-- **Reviewers:** `config.reviewers` minus the current GitHub user (`gh api user --jq .login`). Show team entries (`org/team`) as they are.
+- **Reviewers:** the `request` list from `node "${CLAUDE_PLUGIN_ROOT}/scripts/flow.mjs" reviewers` (no PR number yet: the config list minus you). Show team entries (`org/team`) as they are.
 - **`--draft`:** say "Draft PR: no reviewers, Linear unchanged."
 - **`config.githubAutomationsAligned` is false:** add the warning "Linear's GitHub automations aren't confirmed as aligned, so the status may flip after the PR opens."
 - **`--yes`:** skip this message and print one line instead: "Pushing 3 commits, 7 files to bfy-25/webhook-retry → PR into main." Secret-guard findings still need explicit confirmation.

@@ -8,7 +8,7 @@ All of this happens before the confirmation. Collect the findings for the summar
 
 3. **Secret guard.**
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/flow.mjs" secret-scan
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/flow.mjs" secret-scan [--base <branch>]
    ```
    Exit code 1 means it found something. Show each finding: file, line and rule (previews are already redacted). The user must confirm each flagged file by name ("ship `.env` anyway?") or remove it from the change. **This applies even with `--yes`.** Never print the secret itself.
 
@@ -27,4 +27,4 @@ All of this happens before the confirmation. Collect the findings for the summar
 
 7. **Diff size.** If `diff.insertions + diff.deletions` is over 2000, warn and suggest splitting the change. Give `pr-description` the `git diff --stat <baseRef>...` and the diffs of the most important files only, not the whole diff.
 
-8. **Base override.** With `--base <branch>`, use that branch for the PR and for the sync check (`git rev-list --count HEAD..origin/<branch>`).
+With `--base <branch>`, `status` and `secret-scan` already measured against that branch, so `baseRef`, `behindBase` and the diff above all refer to it. Use the same branch for the PR.

@@ -60,7 +60,7 @@ See [skills/pr-description/references/example.md](skills/pr-description/referenc
 | Piece | Where | Purpose |
 |---|---|---|
 | Skills | `skills/{onboard,start,ship,pr-description}` | The flow itself |
-| Helper CLI | `scripts/flow.mjs` | Deterministic steps the skills call: status, branch and PR checks, secret scan |
+| Helper CLI | `scripts/flow.mjs` | Deterministic steps the skills call: status, branch and PR checks, secret scan, who to request for review |
 | Hooks | `hooks/` | Session context (active task from the branch name) and pre-tool guards |
 | Project config | `.claude/flow.json` in each repo | Team, statuses, reviewers, checks, required PR sections |
 | Project notes | `.claude/flow/*.md` in each repo | Codebase map, QA environment, extra rules; editable, and they override plugin defaults |

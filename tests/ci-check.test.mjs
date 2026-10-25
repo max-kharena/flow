@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { CONFIG, GOOD_BODY, PLUGIN_ROOT } from './helpers.mjs';
+import { checkPrText, prProblems } from '../lib/checks.mjs';
+import { loadConfig } from '../lib/config.mjs';
+import { CONFIG, GOOD_BODY, makeRepo, PLUGIN_ROOT } from './helpers.mjs';
 
 // Pull the inline github-script out of the workflow template and run it with stubs.
 const yaml = readFileSync(join(PLUGIN_ROOT, 'templates', 'github', 'flow-pr-check.yml'), 'utf8');
@@ -50,6 +52,36 @@ test('CI check fails bad branch, title, sections and QA', async () => {
   assert.match(r.failed, /Expected/);
   const t = await runCheck({ branch: 'bfy-25/x', title: 'BFY-26: Wrong', body: GOOD_BODY });
   assert.match(t.failed, /Title must start with "BFY-25: "/);
+});
+
+// The CI template carries its own copy of the PR rules (it runs without the
+// plugin). Every case must get the same verdict from lib and from CI. A
+// --no-task PR has the local marker for lib and the reason line for CI.
+test('CI check and lib agree on the same PRs', async () => {
+  const cfg = loadConfig(makeRepo());
+  const reason = GOOD_BODY.replace(/\[BFY-25[^\n]*\n/, 'Reason: no Linear task: prod outage\n');
+  const noManual = GOOD_BODY.replace(/## How to test it manually \(QA\)[\s\S]*$/, '## How to test it manually (QA)\nNo manual testing needed: refactor.\n');
+  const cases = [
+    { name: 'good', branch: 'bfy-25/x', title: 'BFY-25: Retry', body: GOOD_BODY },
+    { name: 'follow-up branch', branch: 'bfy-25/x-2', title: 'BFY-25: Retry', body: GOOD_BODY },
+    { name: 'bad branch', branch: 'feature/x', title: 'Retry', body: GOOD_BODY },
+    { name: 'long branch', branch: `bfy-25/${'a'.repeat(50)}`, title: 'BFY-25: Retry', body: GOOD_BODY },
+    { name: 'wrong id', branch: 'bfy-25/x', title: 'BFY-26: Retry', body: GOOD_BODY },
+    { name: 'no space after id', branch: 'bfy-25/x', title: 'BFY-25:Retry', body: GOOD_BODY },
+    { name: 'missing section', branch: 'bfy-25/x', title: 'BFY-25: Retry', body: GOOD_BODY.replace('## Rollback plan', '## Notes') },
+    { name: 'section in a code fence', branch: 'bfy-25/x', title: 'BFY-25: Retry', body: GOOD_BODY.replace('## Rollback plan', '```\n## Rollback plan\n```') },
+    { name: 'missing Expected', branch: 'bfy-25/x', title: 'BFY-25: Retry', body: GOOD_BODY.replace('**Expected:**', '') },
+    { name: 'no manual testing', branch: 'bfy-25/x', title: 'BFY-25: Retry', body: noManual },
+    { name: 'no-task with reason', branch: 'hotfix/prod', title: 'Stop the outage', body: reason, noTask: true },
+    { name: 'no-task without reason', branch: 'hotfix/prod', title: 'Stop the outage', body: GOOD_BODY, noTask: true },
+  ];
+  for (const c of cases) {
+    const libOk = c.noTask
+      ? checkPrText({ title: c.title, body: c.body, branch: c.branch, cfg, noTask: true }).ok
+      : prProblems(cfg, { branch: c.branch, title: c.title, body: c.body }).length === 0;
+    const ciOk = (await runCheck(c)).failed === null;
+    assert.equal(ciOk, libOk, `${c.name}: lib ${libOk ? 'passes' : 'fails'}, CI ${ciOk ? 'passes' : 'fails'}`);
+  }
 });
 
 test('CI check accepts the no-task reason line and skips bots and unconfigured repos', async () => {

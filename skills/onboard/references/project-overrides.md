@@ -26,4 +26,4 @@ These files are the project's knowledge; the plugin holds the logic. Skills read
 
 - The QA environment: URLs, test accounts (names only, never passwords), test card numbers, seed commands.
 - How to run the app locally for review.
-- Extra sections the team wants, e.g. "Screenshots" for UI changes. If one should be required, add it to `pr.requiredSections` in `flow.json` too, so the hooks and CI enforce it.
+- Extra sections the team wants, e.g. "Screenshots" for UI changes. If one should be required, add `pr.requiredSections` to `flow.json`, with the five default headings plus the new one, so the hooks and CI enforce it. Left out, the plugin's defaults apply, and they stay current with plugin updates.

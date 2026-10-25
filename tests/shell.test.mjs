@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { inspectGhApi, normalizeCommand, parseGhPrCreate, parseGit, parsePush, pushTargets } from '../lib/commands.mjs';
-import { heredocCatBody, parseShell } from '../lib/shell.mjs';
+import { parseShell } from '../lib/shell.mjs';
 
 const words = (cmd) => parseShell(cmd).map((s) => s.words);
 
@@ -36,10 +36,18 @@ test('drops redirections and their targets', () => {
   assert.deepEqual(words('git push origin x 2>&1 >/tmp/log'), [['git', 'push', 'origin', 'x']]);
 });
 
-test('heredocCatBody handles <<- and empty bodies', () => {
-  assert.equal(heredocCatBody("cat <<-EOF\n\tindented\nEOF\n"), 'indented');
-  assert.equal(heredocCatBody("cat <<'EOF'\nEOF"), '');
-  assert.equal(heredocCatBody('generate --body'), null);
+test('$(cat <<EOF) handles <<-, empty bodies, and leaves other substitutions dynamic', () => {
+  const last = (cmd) => {
+    const [seg] = parseShell(cmd);
+    return [seg.words.at(-1), seg.dynamic.at(-1)];
+  };
+  assert.deepEqual(last('x --body "$(cat <<-EOF\n\tindented\nEOF\n)"'), ['indented', false]);
+  assert.deepEqual(last("x --body \"$(cat <<'EOF'\nEOF\n)\""), ['', false]);
+  assert.deepEqual(last('x --body "$(generate --body)"'), ['$(generate --body)', true]);
+});
+
+test('backslashes are literal inside single quotes', () => {
+  assert.deepEqual(words("echo 'a\\' b"), [['echo', 'a\\', 'b']]);
 });
 
 test('normalizeCommand strips env, wrappers and paths', () => {
@@ -54,7 +62,7 @@ test('parseGit finds the subcommand behind global options', () => {
 });
 
 test('pushTargets covers refspec forms', () => {
-  const t = (args, cur = 'bfy-1/x') => pushTargets(parsePush(args), cur);
+  const t = (args, cur = 'bfy-1/x') => pushTargets(parsePush(args), () => cur);
   assert.deepEqual(t([]), [{ src: 'bfy-1/x', dst: 'bfy-1/x' }]);
   assert.deepEqual(t(['-u', 'origin', 'HEAD']), [{ src: 'bfy-1/x', dst: 'bfy-1/x' }]);
   assert.deepEqual(t(['origin', 'HEAD:main']), [{ src: 'bfy-1/x', dst: 'main' }]);
@@ -66,12 +74,18 @@ test('pushTargets covers refspec forms', () => {
   assert.deepEqual(t(['--tags']), []);
 });
 
-test('parseGhPrCreate reads values in both flag forms', () => {
-  const o = parseGhPrCreate(['--title=BFY-1: X', '-F', 'body.md', '--draft', '--base', 'release']);
+test('parseGhPrCreate reads the values the guard needs, in both flag forms', () => {
+  const o = parseGhPrCreate(['--base', 'release', '--title=BFY-1: X', '-F', 'body.md', '--draft', '-R', 'acme/app', '--web']);
   assert.equal(o.title, 'BFY-1: X');
   assert.equal(o.bodyFile, 'body.md');
-  assert.equal(o.base, 'release');
-  assert.equal(o.draft, true);
+  assert.equal(o.repo, 'acme/app');
+  assert.equal(o.web, true);
+});
+
+test('pushTargets only asks for the current branch when it needs it', () => {
+  let asked = 0;
+  pushTargets(parsePush(['origin', 'bfy-1/x']), () => asked++);
+  assert.equal(asked, 0);
 });
 
 test('inspectGhApi detects PR creation', () => {

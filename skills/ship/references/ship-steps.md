@@ -18,7 +18,11 @@ Run these in order. Before each step, check whether it's already done, so a re-r
    ```
    Don't pass `--reviewer` here: one bad reviewer would fail the whole command. The flow guard hook checks this command. If it denies, fix what it says and retry.
 
-5. **Reviewers** (skip for `--draft`). Read who's already requested with `gh pr view <n> --json reviewRequests`; CODEOWNERS may have added some. Then, for each entry in `config.reviewers` that isn't the author and isn't already requested:
+5. **Reviewers** (skip for `--draft`).
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/flow.mjs" reviewers <n>
+   ```
+   It prints `request`: the config reviewers minus the author and anyone already requested (CODEOWNERS may have added some). Request each one:
    ```bash
    gh pr edit <n> --add-reviewer <login-or-org/team>
    ```

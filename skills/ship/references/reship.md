@@ -4,16 +4,17 @@
 
 2. **Description:** leave it unchanged. The user can regenerate it with `/flow:pr-description`.
 
-3. **Review state:**
+3. **Who to re-request:**
    ```bash
-   gh pr view <n> --json author,latestReviews,reviews,comments,reviewRequests
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/flow.mjs" reviewers <n> --rerequest
+   ```
+   `request` lists the people whose latest review asked for changes or commented, plus authors of PR and inline comments, minus the PR author, bots and anyone already requested. `skipped` says who was left out and why.
+
+   Read the feedback itself for step 4:
+   ```bash
+   gh pr view <n> --json reviews,comments
    gh api repos/{owner}/{repo}/pulls/<n>/comments --paginate
    ```
-   The second command returns the inline review comments. Re-request review from:
-   - people whose **latest** review is `CHANGES_REQUESTED` or `COMMENTED`
-   - authors of PR comments and inline comments
-
-   Exclude the PR author, bots (a `[bot]` suffix, or type `Bot`) and anyone already in `reviewRequests`.
 
 4. **"What changed since review" comment.** Map each review point to how it was handled, in plain language:
    ```markdown

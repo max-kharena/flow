@@ -1,6 +1,6 @@
 # flow: Linear → PR delivery plugin for Claude Code
 
-**Status:** Design agreed in a design review on 2026-10-25/26 and revised after an independent review on 2026-10-26 (see §17). Built as v0.1.0 on 2026-10-26 (see the README). Live runs against Linear and GitHub, and the plugin evals, are still pending (§18).
+**Status:** Design agreed in a design review on 2026-10-25/26 and revised after an independent review on 2026-10-26 (see §17). Built as v0.1.0 on 2026-10-26 and cleaned up in v0.1.1 (see the README and CHANGELOG). Live runs against Linear and GitHub, and the plugin evals, are still pending (§18).
 
 ## Goal
 
@@ -312,7 +312,7 @@ Plugin-level, always on wherever the plugin is enabled, and active only in repos
 | 4 | PR shape guard | `PreToolUse`, `Bash\|PowerShell` | For `gh pr create`: block unless the title starts with the branch's issue ID and the body has every `pr.requiredSections` heading, with at least one **Expected:** result in the QA section (or the one-line no-QA form). That every scenario ends in an expected result needs judgment, so it's a writing rule, not a hook check. The body is read inline, from `--body-file` (relative to `cwd`) or from `-F -` / heredoc. If it can't be found, **ask** instead of deny. `--no-task` PRs need the reason line instead of the ID. `gh pr create --web` is blocked because its body can't be checked. |
 | 5 | Off-path PR guard | `PreToolUse`, `mcp__.*github.*` (PR creation, push, file-write tools) and `Bash\|PowerShell` (`gh api` POST to `/pulls`) | Deny with *"Use `/flow:ship` to open PRs in this repo."* |
 
-**Implementation:** hooks 2–5 run as one dispatcher (`hooks/pre-tool-use.mjs`), so each shell command costs one Node start instead of four. Commands that can't push or create a PR exit before any git call: about 25 ms per ordinary command and about 65 ms for a push, measured. A crash in a guard is logged and never blocks.
+**Implementation:** hooks 2–5 run as one dispatcher (`hooks/pre-tool-use.mjs`) behind one anchored matcher. That matcher covers `Bash`, `PowerShell` and only the GitHub MCP write tools, so read-only MCP calls never start Node. Commands that can't push or create a PR exit before the guard code even loads, at about 20 ms each. Loading the config takes two git calls: one `rev-parse` for root and git dirs, and one `cat-file --batch` for the committed config. A crash in a guard is logged and never blocks.
 
 **Command parsing** (hooks 2–5): split chained commands (`&&`, `;`, `|`) and check each part. Normalize `command git`, `\git`, `env … git`, `git -C <dir>` and `git -c k=v`. Aliases, wrapper scripts and Makefile targets are not caught, which is a known limitation covered by CI.
 
@@ -377,6 +377,7 @@ Plugin-level, always on wherever the plugin is enabled, and active only in repos
 
 - Status IDs are the source of truth, so a status renamed in Linear doesn't break anything.
 - The branch pattern is derived from `linear.teamKey`, not stored.
+- `pr` and `guard` are optional. Onboarding leaves them out, so the plugin's defaults apply and improve with plugin updates. A repo adds either key only to override the defaults.
 - Optional `pr.qaSection` names the section that needs an **Expected:** result. It defaults to the first required section mentioning "QA" or "manual".
 - `guard.secretPaths` never flags `*.example`, `*.sample`, `*.template` or `*.dist` files, so `.env.example` ships without a prompt.
 - The CI workflow reads the same file from the base branch, so the local hooks and CI enforce identical rules. CI also skips bot PRs (Dependabot, Renovate), and accepts the "Reason: no Linear task" line in place of the branch ID check, since CI can't see the local `--no-task` marker.
@@ -402,7 +403,8 @@ flow/
 │   ├── commands.mjs                # git/gh recognition, refspecs, gh api
 │   ├── guards.mjs, checks.mjs, config.mjs, secrets.mjs, git.mjs, io.mjs
 ├── scripts/flow.mjs                # helper CLI the skills call: status, config, check-branch,
-│                                   # check-pr, secret-scan, no-task, pr-body-path, validate-config
+│                                   # check-pr, secret-scan, reviewers, no-task, pr-body-path,
+│                                   # validate-config
 ├── templates/                      # written into projects by onboarding
 │   ├── flow.json, settings.json, rules/flow.md, flow/*.md
 │   └── github/flow-pr-check.yml    # CI backstop
