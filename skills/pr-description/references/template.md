@@ -36,6 +36,8 @@ Two to four plain sentences: what was asked, and why it matters.
 ## Variants
 
 - **Missing Linear description.** "Original task" holds the engineer's brief, plus the line: *"No description was provided in Linear; scope was taken from the engineer at start."* Leave out the `<details>` block.
+- **Task created from the work** (by `/flow:ship`). The task's own description was written from this change, so don't repeat it. Give the link and one or two sentences on the problem it solves. Leave out the `<details>` block.
+- **Description added from the work** (an existing task that had none). Use the added description, and add the line *"The Linear task had no description; this one was added from the completed work."*
 - **`--no-task`.** Keep the "Original task" heading and replace its content with one line: *"Reason: no Linear task: <reason>"*.
 - **Checks skipped.** Add `⚠️ Local checks skipped: <reason>` as the first line of "How to review the code".
 - **Nothing to test manually.** The whole QA section is one line: *"No manual testing needed: <reason>"*. Never drop the section.

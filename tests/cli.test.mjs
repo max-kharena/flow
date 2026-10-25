@@ -130,6 +130,55 @@ test('reviewers --rerequest: people with feedback, minus the author, bots and pe
   ]);
 });
 
+test('adopt from main: carries uncommitted work, moves local commits, resets main', () => {
+  const repo = makeRepo();
+  write(repo, 'a.txt', 'committed on main\n');
+  sh(repo, 'git', ['add', 'a.txt']);
+  sh(repo, 'git', ['commit', '--quiet', '-m', 'work on main']);
+  write(repo, 'b.txt', 'uncommitted\n');
+  const originMain = sh(repo, 'git', ['rev-parse', 'origin/main']);
+  const { code, json } = cli(repo, ['adopt', 'bfy-57/webhook-retry']);
+  assert.equal(code, 0);
+  assert.equal(json.movedCommits, 1);
+  assert.equal(json.resetBase, true);
+  assert.equal(sh(repo, 'git', ['branch', '--show-current']), 'bfy-57/webhook-retry');
+  assert.equal(sh(repo, 'git', ['log', '-1', '--format=%s']), 'work on main');
+  assert.equal(sh(repo, 'git', ['rev-parse', 'main']), originMain);
+  assert.match(sh(repo, 'git', ['status', '--porcelain']), /\?\? b\.txt/);
+});
+
+test('adopt from a non-task branch renames it and drops the old upstream', () => {
+  const repo = makeRepo();
+  checkout(repo, 'feature/x');
+  write(repo, 'a.txt', 'x\n');
+  sh(repo, 'git', ['add', 'a.txt']);
+  sh(repo, 'git', ['commit', '--quiet', '-m', 'x']);
+  sh(repo, 'git', ['push', '--quiet', '-u', 'origin', 'feature/x']);
+  const { json } = cli(repo, ['adopt', 'bfy-58/x']);
+  assert.equal(json.renamedFrom, 'feature/x');
+  assert.equal(json.oldUpstream, 'origin/feature/x');
+  assert.equal(sh(repo, 'git', ['branch', '--show-current']), 'bfy-58/x');
+  assert.equal(sh(repo, 'git', ['branch', '--list', 'feature/x']), '');
+  assert.throws(() => sh(repo, 'git', ['rev-parse', '--abbrev-ref', '@{upstream}']));
+});
+
+test('adopt refuses bad names, existing branches and task branches', () => {
+  const repo = makeRepo();
+  assert.equal(cli(repo, ['adopt', 'feature/y']).code, 1);
+  sh(repo, 'git', ['branch', 'bfy-1/taken']);
+  assert.match(cli(repo, ['adopt', 'bfy-1/taken']).json.problems.join(), /already exists/);
+  checkout(repo, 'bfy-2/x');
+  assert.match(cli(repo, ['adopt', 'bfy-3/y']).json.problems.join(), /already on the task branch/);
+});
+
+test('adopt from a detached HEAD creates the branch there', () => {
+  const repo = makeRepo();
+  sh(repo, 'git', ['checkout', '--quiet', '--detach']);
+  const { json } = cli(repo, ['adopt', 'bfy-4/x']);
+  assert.equal(json.from, '(detached HEAD)');
+  assert.equal(sh(repo, 'git', ['branch', '--show-current']), 'bfy-4/x');
+});
+
 test('pr-body-path lives inside .git', () => {
   const repo = makeRepo();
   checkout(repo, 'bfy-25/x');

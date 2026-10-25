@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0
+
+- Work started without a task: when someone asks `/flow:ship` (or "commit, push and open a PR") from `main` or a branch with no issue ID:
+  - it lists their Linear tasks, likely matches first, next to a draft new task written from the work
+  - the draft has a title, a description and labels from the team's existing ones
+  - "new" creates that task; choosing an existing task fills in its description if it had none
+  - the work then moves onto a `<prefix>-<n>/<slug>` branch and shipping continues
+- New `flow.mjs adopt <branch>`:
+  - from `main` or a detached HEAD, it creates the task branch, carrying uncommitted changes, and moves commits made directly on `main` (local `main` is reset to `origin/main`)
+  - from another branch, it renames it and drops the stale upstream
+- Guard and session messages now point to `/flow:ship` for linking untasked work.
+
 ## 0.1.1
 
 - New `flow.mjs reviewers [<pr>] [--rerequest]`. Picking reviewers is now code rather than skill prose, and the ship skill uses it.

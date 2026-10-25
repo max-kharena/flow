@@ -3,7 +3,7 @@
 A Claude Code plugin that takes work from a **Linear task** to a **reviewed pull request** the same way every time:
 
 1. **`/flow:start BFY-25`** loads the task from Linear and warns if it has no description. It creates `bfy-25/short-slug` from the latest base branch and moves the issue to *In Progress*.
-2. **`/flow:ship`** (or "push this", "create a PR") runs the checks and writes a human-friendly PR description. You get one confirmation; after that it pushes, opens the PR, requests reviewers and moves the issue to *In Review*.
+2. **`/flow:ship`** (or "push this", "create a PR") runs the checks and writes a human-friendly PR description. You get one confirmation; after that it pushes, opens the PR, requests reviewers and moves the issue to *In Review*. If you skipped step 1, it first lets you pick one of your tasks or **creates one from the work you did**, then moves the work onto a properly named branch.
 3. **Guardrail hooks** keep the agent from pushing to `main`, shipping from a badly named branch, or opening a PR that skips the template. A CI check enforces the same rules for PRs made outside Claude.
 
 Nothing is team-specific. Each repo's Linear team, statuses, reviewers and checks come from onboarding.
@@ -60,7 +60,7 @@ See [skills/pr-description/references/example.md](skills/pr-description/referenc
 | Piece | Where | Purpose |
 |---|---|---|
 | Skills | `skills/{onboard,start,ship,pr-description}` | The flow itself |
-| Helper CLI | `scripts/flow.mjs` | Deterministic steps the skills call: status, branch and PR checks, secret scan, who to request for review |
+| Helper CLI | `scripts/flow.mjs` | Deterministic steps the skills call: status, branch and PR checks, secret scan, who to request for review, moving work onto a task branch |
 | Hooks | `hooks/` | Session context (active task from the branch name) and pre-tool guards |
 | Project config | `.claude/flow.json` in each repo | Team, statuses, reviewers, checks, required PR sections |
 | Project notes | `.claude/flow/*.md` in each repo | Codebase map, QA environment, extra rules; editable, and they override plugin defaults |

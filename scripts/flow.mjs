@@ -23,6 +23,7 @@ const USAGE = `usage: flow.mjs <command> [options]
                                    Scan the branch (or a text file) for secrets
   reviewers [<pr-number>] [--rerequest]
                                    Who to request: config reviewers, or re-review after feedback
+  adopt <branch>                   Move work done without a task onto a new task branch
   no-task <reason>                 Record a one-off --no-task reason for the current branch
   pr-body-path                     Path for the PR body draft (inside .git, never committed)
   validate-config [<file>]         Check a flow.json file (default .claude/flow.json)`;
@@ -165,6 +166,37 @@ function secretScan(opts) {
   out({ paths, content }, paths.length || content.length ? 1 : 0);
 }
 
+// Moves work done without a task onto the task branch `name`. From the base
+// branch (or a detached HEAD) it creates the branch at HEAD, carrying any
+// uncommitted changes, and resets the local base branch to its remote if
+// commits were made on it. From any other non-task branch it renames it.
+function adopt(name) {
+  if (!name) fail('adopt needs a branch name');
+  const cfg = requireConfig();
+  const { root, baseBranch } = cfg;
+  const nameProblems = branchProblems(name, cfg);
+  if (nameProblems.length) outProblems(nameProblems);
+  if (git(root, ['rev-parse', '--verify', '--quiet', `refs/heads/${name}`]) !== null) outProblems([`branch \`${name}\` already exists`]);
+  const from = currentBranch(root);
+  if (from && from !== baseBranch && !branchProblems(from, cfg).length) outProblems([`already on the task branch \`${from}\``]);
+  const result = { ok: true, problems: [], branch: name, from: from ?? '(detached HEAD)', renamedFrom: null, oldUpstream: null, movedCommits: 0, resetBase: false };
+  if (from && from !== baseBranch) {
+    result.oldUpstream = git(root, ['rev-parse', '--abbrev-ref', `${from}@{upstream}`]);
+    if (git(root, ['branch', '-m', name]) === null) fail(`git branch -m ${name} failed`, 1);
+    // The old upstream would point `git push` and "up to date" checks at the old name.
+    if (result.oldUpstream) git(root, ['branch', '--unset-upstream']);
+    result.renamedFrom = from;
+    out(result);
+  }
+  if (git(root, ['switch', '-c', name]) === null) fail(`git switch -c ${name} failed`, 1);
+  const remoteBase = baseRef(root, baseBranch);
+  if (from === baseBranch && remoteBase !== baseBranch) {
+    result.movedCommits = Number(git(root, ['rev-list', '--count', `${remoteBase}..${baseBranch}`]) ?? 0);
+    if (result.movedCommits > 0) result.resetBase = git(root, ['branch', '-f', baseBranch, remoteBase]) !== null;
+  }
+  out(result);
+}
+
 function currentRepoBranch() {
   const info = repoInfo(process.cwd());
   const branch = info && currentBranch(info.root);
@@ -204,6 +236,9 @@ switch (command) {
     break;
   case 'reviewers':
     reviewers(rest[0], opts);
+    break;
+  case 'adopt':
+    adopt(rest[0]);
     break;
   case 'no-task': {
     const reason = rest.join(' ').trim();

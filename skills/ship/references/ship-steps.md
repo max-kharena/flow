@@ -28,9 +28,11 @@ Run these in order. Before each step, check whether it's already done, so a re-r
    ```
    Request them one at a time. A failure (the person left the org, or has no access) is reported for that reviewer only, and the rest continue.
 
-6. **Linear PR link** (skip with `--no-task`). Run `get_issue` and check its attachments and links. Linear's GitHub integration usually adds the PR within seconds. If the PR URL still isn't there, post a comment: "PR: <url>".
+6. **Planned task updates** (only if assign-task.md planned them): add the drafted description to the issue, and assign it to the current user, with `update_issue`.
 
-7. **Linear status.** This is always the last step. Skip it for `--draft` and `--no-task`.
+7. **Linear PR link** (skip with `--no-task`). Run `get_issue` and check its attachments and links. Linear's GitHub integration usually adds the PR within seconds. If the PR URL still isn't there, post a comment: "PR: <url>".
+
+8. **Linear status.** This is always the last step. Skip it for `--draft` and `--no-task`.
    - If the state isn't already `config.transitions.ship.id`, set it with `update_issue`.
    - Wait about 5 seconds (`sleep 5`) and run `get_issue` again. If something else changed the state, report: "Linear automation overrode the status; check the team's PR automations in Linear (see /flow:onboard)." Don't set it again.
 

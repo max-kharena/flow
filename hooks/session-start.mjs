@@ -61,7 +61,7 @@ function contextLines(input) {
   } else if (branch && (noTask = readNoTask(cfg, branch)) !== null) {
     lines.push(`flow: branch \`${branch}\` is a one-off change without a Linear task (reason: ${noTask || 'not given'}).`);
   } else if (branch) {
-    lines.push(`flow: branch \`${branch}\` isn't a task branch (expected \`${cfg.prefix}-<number>/<slug>\`). Use /flow:start, or rename the branch before shipping.`);
+    lines.push(`flow: branch \`${branch}\` isn't a task branch (expected \`${cfg.prefix}-<number>/<slug>\`). /flow:ship will link this work to a Linear task before shipping, or use /flow:start to pick one now.`);
   }
   if (startup && !ghSignedIn()) lines.push('flow: the GitHub CLI (gh) is missing or not signed in. Run /flow:onboard to finish setup.');
   if (startup && cfg.raw.linear?.githubAutomationsAligned === false) {

@@ -4,7 +4,8 @@ Send one message, then wait. Example:
 
 > **Ready to ship BFY-25** → PR into `main`
 >
-> - Branch: `bfy-25/webhook-retry` (3 commits ahead)
+> - Task: BFY-25 · will add a description from this work · will assign to you *(only when assign-task.md planned these; for a task created from the work: "BFY-57, created from this work")*
+> - Branch: `bfy-25/webhook-retry` (3 commits ahead; moved from `main`, which was reset to `origin/main`)
 > - Sync: will rebase onto `origin/main` (2 new commits), then re-run checks
 > - Will commit: `M src/webhooks/deliver.ts`, `A src/webhooks/retry.test.ts` as "BFY-25: Retry failed webhook deliveries"
 > - Checks: ✓ pnpm lint · ✓ pnpm typecheck · ✓ pnpm test

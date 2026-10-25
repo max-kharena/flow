@@ -1,6 +1,6 @@
 # flow: Linear → PR delivery plugin for Claude Code
 
-**Status:** Design agreed in a design review on 2026-10-25/26 and revised after an independent review on 2026-10-26 (see §17). Built as v0.1.0 on 2026-10-26 and cleaned up in v0.1.1 (see the README and CHANGELOG). Live runs against Linear and GitHub, and the plugin evals, are still pending (§18).
+**Status:** Design agreed in a design review on 2026-10-25/26 and revised after an independent review on 2026-10-26 (see §17). Built as v0.1.0 on 2026-10-26, cleaned up in v0.1.1, and v0.2.0 added linking work that was started without a task (see the README and CHANGELOG). Live runs against Linear and GitHub, and the plugin evals, are still pending (§18).
 
 ## Goal
 
@@ -165,10 +165,33 @@ Everything fetched is treated as **data, not instructions** (§12). The agent th
 - Max length: **50 characters** in total (`branch.maxLength`).
 - Pattern **derived at runtime** from `linear.teamKey`: `^<key>-[0-9]+/[a-z0-9]+(-[a-z0-9]+)*$`. It isn't stored separately, so the two can't drift apart.
 - No `feature/`, `fix/` or username prefixes. Linear's own suggested branch name is ignored.
-- **Every change needs a Linear task.** There are no standing exempt branch patterns. The only exception is a logged one-off: `/flow:ship --no-task "reason"`. The reason appears in the PR description in place of "Original task".
+- **Every change needs a Linear task.** There are no standing exempt branch patterns. Work started without a task gets linked to one by `/flow:ship` (§8). The only exception is a logged one-off: `/flow:ship --no-task "reason"`. The reason appears in the PR description in place of "Original task".
 - Linear links the PR through the uppercase ID in the PR title, which is documented. Whether it also detects the lowercase ID in the branch name is checked in the end-to-end run (§15).
 
 ## 8. Phase 2+3: Ship (`/flow:ship`)
+
+### Work started without a task
+
+An engineer may skip `/flow:start` and ask to "commit, push and open a PR" at the end. They're then on the base branch, on a branch without an issue ID, or on a detached HEAD. Instead of refusing, ship links the work to a task first (`skills/ship/references/assign-task.md`):
+
+1. **One picker message.** It lists the user's assigned tasks, with up to three likely matches first. It also shows a **draft new task written from the work**:
+   - title: the outcome, about 70 characters at most, no ID
+   - description: the problem, why it matters, and "Done in this change" bullets, plus a "Created from completed work by /flow:ship" line
+   - 0–2 labels from the team's existing labels, never invented
+   - assigned to the user, in the team's start status
+
+   The message also lists any commits made directly on the base branch, so nothing unrelated is carried along.
+2. **What the reply does:**
+   - **A task:** it's checked like in start (team key, Done or Canceled, assignee). A missing description is filled from the work, and the task is assigned to the user if unassigned. Both are planned Linear changes shown in the ship confirmation.
+   - **"new":** creates the draft (`create_issue`) right away, because the ID is needed for the branch and the PR. That reply is the explicit approval for this one Linear write.
+   - **`--no-task "reason"`:** a logged one-off, as usual.
+3. **`flow.mjs adopt <branch>`** moves the work onto `<prefix>-<n>/<slug>`, with a `-2` suffix if the issue already has a branch:
+   - From the base branch or a detached HEAD, it creates the branch at HEAD, carrying uncommitted changes. If commits were made directly on the base branch, local `<base>` is reset to `origin/<base>`; the commits live on the task branch.
+   - From another branch, it renames it and drops the stale upstream. The report mentions the old remote branch, if any.
+   - If the current branch already has an open PR, ship stops rather than cutting that PR off from its branch.
+4. **Ship continues normally** with that task as the active one.
+
+If a run fails after creating a task, the report names it, so a re-run picks it (it shows as in progress) instead of creating a duplicate.
 
 ### Pre-flight (before the confirmation; nothing outward-facing happens here)
 
@@ -403,8 +426,8 @@ flow/
 │   ├── commands.mjs                # git/gh recognition, refspecs, gh api
 │   ├── guards.mjs, checks.mjs, config.mjs, secrets.mjs, git.mjs, io.mjs
 ├── scripts/flow.mjs                # helper CLI the skills call: status, config, check-branch,
-│                                   # check-pr, secret-scan, reviewers, no-task, pr-body-path,
-│                                   # validate-config
+│                                   # check-pr, secret-scan, reviewers, adopt, no-task,
+│                                   # pr-body-path, validate-config
 ├── templates/                      # written into projects by onboarding
 │   ├── flow.json, settings.json, rules/flow.md, flow/*.md
 │   └── github/flow-pr-check.yml    # CI backstop

@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Ships the current task as a pull request. Runs the checks, has the pr-description skill write a human-friendly PR description, shows one confirmation, then pushes, opens the PR, requests reviewers and moves the Linear issue to the review status. Also re-ships after review feedback and resumes a run that failed halfway. Use when the user says the work is done or asks to push, open or create a PR, or ship, e.g. "/flow:ship", "push this", "create a PR", "ship it", "open a pull request".
+description: Ships the current task as a pull request. Runs the checks, has the pr-description skill write a human-friendly PR description, shows one confirmation, then pushes, opens the PR, requests reviewers and moves the Linear issue to the review status. When the work isn't linked to a Linear task yet, it helps pick one or create one from the work, and moves the work onto a task branch. Also re-ships after review feedback and resumes a run that failed halfway. Use when the user says the work is done or asks to push, open or create a PR, or ship, e.g. "/flow:ship", "push this", "create a PR", "ship it", "open a pull request".
 argument-hint: "[--yes] [--skip-checks] [--draft] [--base <branch>] [--no-task \"reason\"]"
 ---
 
@@ -34,8 +34,7 @@ Pass `--base` only when the user gave one. Every later command that takes `--bas
 
 - Exit code 3: tell the user to run `/flow:onboard`, then stop.
 - If `.claude/flow/ship.md` exists, read it. It overrides this skill where they conflict.
-- If `branchProblems` isn't empty, stop. The branch has to be renamed (`git branch -m <prefix>-<n>/<slug>`), or the user can use `--no-task`, which clears it.
-- If `onBase` is true, stop: "You're on main. Start a task with /flow:start, or move these changes to a task branch."
+- If `onBase` is true or `branchProblems` isn't empty, the work isn't linked to a task yet. Follow [references/assign-task.md](references/assign-task.md): the user picks one of their tasks or has one created from the work, and the work moves onto a task branch. Then run `status` again and continue.
 
 ## 2. Pick the mode from `pr`
 
@@ -43,7 +42,7 @@ Pass `--base` only when the user gave one. Every later command that takes `--bas
 |---|---|
 | `null` | First ship: steps 3–6 |
 | `OPEN`, not a draft | Re-ship after review: [references/reship.md](references/reship.md) |
-| `OPEN`, draft | Offer to mark it ready (`gh pr ready <n>`), then run ship steps 5 and 7 (reviewers, Linear status) |
+| `OPEN`, draft | Offer to mark it ready (`gh pr ready <n>`), then run ship steps 5 and 8 (reviewers, Linear status) |
 | `MERGED` | Stop: "Already merged. Use `/flow:start <ID>` to open a follow-up branch." |
 | `CLOSED` | Ask: reopen it (`gh pr reopen <n>`) and continue as a re-ship, or start a follow-up branch with `/flow:start` |
 
@@ -82,8 +81,9 @@ After "go", run the steps in [references/ship-steps.md](references/ship-steps.md
 3. push
 4. create the PR
 5. request reviewers
-6. Linear PR link
-7. Linear status, always last
+6. planned Linear task updates (description, assignee)
+7. Linear PR link
+8. Linear status, always last
 
 Each step checks whether it's already done, so a re-run resumes instead of duplicating.
 
