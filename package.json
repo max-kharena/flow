@@ -1,0 +1,12 @@
+{
+  "name": "flow-claude-plugin",
+  "private": true,
+  "description": "Development scripts for the flow Claude Code plugin. The plugin itself has no dependencies.",
+  "scripts": {
+    "test": "node --test \"tests/*.test.mjs\"",
+    "validate": "claude plugin validate . --strict"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

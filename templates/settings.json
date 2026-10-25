@@ -1,0 +1,10 @@
+{
+  "extraKnownMarketplaces": {
+    "<MARKETPLACE_NAME>": {
+      "source": { "source": "github", "repo": "<OWNER>/<REPO>" }
+    }
+  },
+  "enabledPlugins": {
+    "flow@<MARKETPLACE_NAME>": true
+  }
+}

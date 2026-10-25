@@ -1,0 +1,16 @@
+{
+  "name": "max-kharena",
+  "owner": {
+    "name": "Max Kharena",
+    "url": "https://github.com/max-kharena"
+  },
+  "description": "Claude Code plugins by Max Kharena.",
+  "plugins": [
+    {
+      "name": "flow",
+      "source": "./",
+      "description": "Linear → PR delivery flow with onboarding, task start, PR shipping and guardrail hooks.",
+      "category": "workflow"
+    }
+  ]
+}

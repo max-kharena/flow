@@ -1,0 +1,86 @@
+# Server-side backstop for the flow plugin: checks every non-draft PR, made with
+# or without Claude. Rules come from the base branch's .claude/flow.json.
+name: flow PR check
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  flow-pr-check:
+    name: flow PR check
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            if (pr.user.type === 'Bot') {
+              core.notice(`Skipping the flow check for bot PR by ${pr.user.login}.`);
+              return;
+            }
+            const load = async (ref) => {
+              try {
+                const { data } = await github.rest.repos.getContent({ ...context.repo, path: '.claude/flow.json', ref });
+                return JSON.parse(Buffer.from(data.content, 'base64').toString('utf8'));
+              } catch {
+                return null;
+              }
+            };
+            const cfg = (await load(pr.base.sha)) ?? (await load(pr.head.sha));
+            if (!cfg) {
+              core.notice('No .claude/flow.json; skipping the flow check.');
+              return;
+            }
+            const key = String(cfg.linear?.teamKey ?? '').toUpperCase();
+            const prefix = key.toLowerCase();
+            const maxLength = Number(cfg.branch?.maxLength) || 50;
+            const sections = cfg.pr?.requiredSections?.length
+              ? cfg.pr.requiredSections
+              : ['Original task', 'What was done', 'How to review the code', 'Rollback plan', 'How to test it manually (QA)'];
+            const qaName = cfg.pr?.qaSection || sections.find((s) => /\bQA\b|manual/i.test(s));
+            const branch = pr.head.ref;
+            const title = pr.title ?? '';
+            const body = pr.body ?? '';
+            const problems = [];
+            const noTask = /reason:\s*no linear task/i.test(body);
+            if (!noTask) {
+              const pattern = new RegExp(`^${prefix}-[0-9]+/[a-z0-9]+(-[a-z0-9]+)*$`);
+              if (!pattern.test(branch)) problems.push(`Branch \`${branch}\` doesn't match \`${prefix}-<number>/<slug>\`.`);
+              if (branch.length > maxLength) problems.push(`Branch \`${branch}\` is longer than ${maxLength} characters.`);
+              const id = new RegExp(`^${prefix}-(\\d+)/`).exec(branch);
+              if (id && !new RegExp(`^${key}-${id[1]}: \\S`).test(title)) problems.push(`Title must start with "${key}-${id[1]}: ".`);
+            }
+            const norm = (s) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+            const lines = body.split(/\r?\n/);
+            const heads = [];
+            let fence = false;
+            lines.forEach((line, i) => {
+              if (/^\s*(```|~~~)/.test(line)) fence = !fence;
+              const m = !fence && /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
+              if (m) heads.push({ level: m[1].length, title: norm(m[2]), line: i });
+            });
+            const contentOf = (h) => {
+              const next = heads.slice(heads.indexOf(h) + 1).find((n) => n.level <= h.level);
+              return lines.slice(h.line + 1, next ? next.line : lines.length).join('\n');
+            };
+            for (const s of sections) {
+              if (!heads.some((h) => h.title === norm(s))) problems.push(`Missing the "## ${s}" section.`);
+            }
+            const qa = qaName && heads.find((h) => h.title === norm(qaName));
+            if (qa) {
+              const text = contentOf(qa);
+              if (!/no manual testing needed/i.test(text) && !/expected\s*:/i.test(text)) {
+                problems.push(`"${qaName}" needs an "**Expected:**" result, or "No manual testing needed: <reason>".`);
+              }
+            }
+            if (problems.length) {
+              core.setFailed(`This PR doesn't follow the team's flow:\n- ${problems.join('\n- ')}\nUse /flow:ship in Claude Code, or fix the title and description by hand.`);
+            } else {
+              core.info('flow PR check passed.');
+            }

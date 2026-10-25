@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "linear": {
+    "teamKey": "<TEAM_KEY>",
+    "teamId": "<TEAM_ID>",
+    "statuses": [
+      { "id": "<STATUS_ID>", "name": "<Status name>", "type": "<backlog|unstarted|started|completed|canceled>" }
+    ],
+    "transitions": {
+      "start": { "id": "<STATUS_ID>", "name": "In Progress" },
+      "ship": { "id": "<STATUS_ID>", "name": "In Review" }
+    },
+    "githubAutomationsAligned": false,
+    "notifyCreatorOnMissingDescription": false
+  },
+  "github": {
+    "baseBranch": "main",
+    "reviewers": [],
+    "syncStrategy": "rebase"
+  },
+  "branch": {
+    "maxLength": 50
+  },
+  "checks": [],
+  "pr": {
+    "requiredSections": [
+      "Original task",
+      "What was done",
+      "How to review the code",
+      "Rollback plan",
+      "How to test it manually (QA)"
+    ]
+  },
+  "guard": {
+    "secretPaths": [".env", ".env.*", "*.pem", "*.key", "*.p12", "*.pfx", "*.keystore", "id_rsa*", "id_ed25519*", "*credentials*.json", "service-account*.json"]
+  }
+}
