@@ -1,3 +1,5 @@
 node_modules/
-evals/results/
+plugins/flow/evals/results/
 .DS_Store
+upstream/.sync/
+upstream/SYNC-REPORT.md

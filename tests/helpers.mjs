@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const PLUGIN_ROOT = fileURLToPath(new URL('..', import.meta.url));
+export const PLUGIN_ROOT = fileURLToPath(new URL('../plugins/flow/', import.meta.url));
 const PRE_TOOL_USE = join(PLUGIN_ROOT, 'hooks', 'pre-tool-use.mjs');
 const SESSION_START = join(PLUGIN_ROOT, 'hooks', 'session-start.mjs');
 const CLI = join(PLUGIN_ROOT, 'scripts', 'flow.mjs');

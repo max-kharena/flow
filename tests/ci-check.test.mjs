@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { checkPrText, prProblems } from '../lib/checks.mjs';
-import { loadConfig } from '../lib/config.mjs';
+import { checkPrText, prProblems } from '../plugins/flow/lib/checks.mjs';
+import { loadConfig } from '../plugins/flow/lib/config.mjs';
 import { CONFIG, GOOD_BODY, makeRepo, PLUGIN_ROOT } from './helpers.mjs';
 
 // Pull the inline github-script out of the workflow template and run it with stubs.

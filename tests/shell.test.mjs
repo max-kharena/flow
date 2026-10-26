@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { inspectGhApi, normalizeCommand, parseGhPrCreate, parseGit, parsePush, pushTargets } from '../lib/commands.mjs';
-import { parseShell } from '../lib/shell.mjs';
+import { inspectGhApi, normalizeCommand, parseGhPrCreate, parseGit, parsePush, pushTargets } from '../plugins/flow/lib/commands.mjs';
+import { parseShell } from '../plugins/flow/lib/shell.mjs';
 
 const words = (cmd) => parseShell(cmd).map((s) => s.words);
 

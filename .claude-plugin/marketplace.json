@@ -8,8 +8,8 @@
   "plugins": [
     {
       "name": "flow",
-      "source": "./",
-      "description": "Linear → PR delivery flow with onboarding, task start, PR shipping and guardrail hooks.",
+      "source": "./plugins/flow",
+      "description": "Linear \u2192 PR delivery with guardrail hooks, plus a work mode built from pstack and Superpowers: session gate, playbooks, worktrees, design docs, review replies.",
       "category": "workflow"
     }
   ]

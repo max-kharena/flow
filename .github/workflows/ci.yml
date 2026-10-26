@@ -10,13 +10,35 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: npm ci
+      - run: node tools/generate.mjs --check
+      - run: node tools/lint.mjs
       - run: node --test "tests/*.test.mjs"
+
+  # watch-pr ships built for Node; its upstream tests are written for Bun's
+  # test runner, so they run against the TypeScript source here.
+  upstream-scripts:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: upstream/pstack/skills/poteto-mode/scripts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun test watch-pr check-plan.test.ts
 
   validate:
     runs-on: ubuntu-latest
@@ -27,3 +49,5 @@ jobs:
           node-version: 22
       - run: npm install -g @anthropic-ai/claude-code
       - run: claude plugin validate . --strict
+      - run: claude plugin validate plugins/flow/.claude-plugin/plugin.json --strict
+      - run: claude plugin validate plugins/flow/skills --strict

@@ -1,0 +1,11 @@
+# Codex metadata.
+interface:
+  display_name: "Flow: start task"
+  short_description: "Pick up a Linear task and create its branch"
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "linear"
+      description: "Linear MCP server: issues, workflow statuses, comments"
+      transport: "streamable_http"
+      url: "https://mcp.linear.app/mcp"

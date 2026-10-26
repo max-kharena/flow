@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { checkout, cli, CONFIG, GOOD_BODY, guard, makeRepo, mcpGuard, sh, write } from './helpers.mjs';
+import { checkout, cli, CONFIG, GOOD_BODY, guard, makeRepo, mcpGuard, PLUGIN_ROOT, sh, write } from './helpers.mjs';
 
 const denied = (r) => r?.decision === 'deny';
 
@@ -165,6 +166,32 @@ test('repos without flow.json are left alone', () => {
   const repo = makeRepo({ config: null });
   assert.equal(guard(repo, 'git push origin main'), null);
   assert.equal(guard(repo, 'gh pr create --web'), null);
+});
+
+test('Codex-shaped hook input (Bash tool, extra fields) goes through the same guard', () => {
+  const repo = makeRepo();
+  const res = spawnSync('node', [join(PLUGIN_ROOT, 'hooks', 'pre-tool-use.mjs')], {
+    input: JSON.stringify({
+      session_id: 's',
+      turn_id: 't',
+      hook_event_name: 'PreToolUse',
+      model: 'gpt-5',
+      permission_mode: 'default',
+      tool_name: 'Bash',
+      tool_use_id: 'call_1',
+      tool_input: { command: 'git push origin main' },
+      cwd: repo,
+    }),
+    encoding: 'utf8',
+  });
+  assert.equal(JSON.parse(res.stdout).hookSpecificOutput.permissionDecision, 'deny');
+});
+
+test('the hook matcher covers Bash, PowerShell and only GitHub MCP writes', () => {
+  const { hooks } = JSON.parse(readFileSync(join(PLUGIN_ROOT, 'hooks', 'hooks.json'), 'utf8'));
+  const matcher = new RegExp(hooks.PreToolUse[0].matcher);
+  for (const tool of ['Bash', 'PowerShell', 'mcp__github__create_pull_request', 'mcp__plugin_github_github__push_files']) assert.ok(matcher.test(tool), tool);
+  for (const tool of ['Read', 'BashOutput', 'mcp__github__get_pull_request', 'apply_patch']) assert.ok(!matcher.test(tool), tool);
 });
 
 test('PowerShell commands go through the same guard', () => {
