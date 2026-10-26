@@ -1,6 +1,6 @@
 # flow: Linear → PR delivery plugin for Claude Code
 
-**Status:** Design agreed in a design review on 2026-10-25/26 and revised after an independent review on 2026-10-26 (see §17). Built as v0.1.0 on 2026-10-26, cleaned up in v0.1.1, and v0.2.0 added linking work that was started without a task (see the README and CHANGELOG). Live runs against Linear and GitHub, and the plugin evals, are still pending (§18).
+**Status:** Design agreed in a design review on 2026-10-25/26 and revised after an independent review on 2026-10-26 (see §17). Built as v0.1.0 on 2026-10-26, cleaned up in v0.1.1, and v0.2.0 added linking work that was started without a task (see the README and CHANGELOG). v0.3.0 adds the work mode from the Flow PRD: pstack translated to Claude Code at build time plus pieces from Superpowers (§20). Live runs against Linear and GitHub are still pending (§19).
 
 ## Goal
 
@@ -16,8 +16,8 @@ The plugin is **generic**. Nothing team-specific is hardcoded. The Linear team k
 
 ## 1. Packaging and distribution
 
-- **Claude Code plugin** named `flow`, so commands are `/flow:onboard`, `/flow:start`, `/flow:ship` and `/flow:pr-description`.
-- Published from a GitHub repo under the author's account (`<github-handle>/flow`) as a **single-plugin marketplace**: `marketplace.json` lists `flow` with source `./`.
+- **A plugin for Claude Code and Codex** named `flow`, so the skills are `flow:onboard`, `flow:start`, `flow:ship` and `flow:pr-description`: `/flow:ship` in Claude Code, `$flow:ship` in Codex. Codex support is §18.
+- Published from a GitHub repo under the author's account (`max-kharena/flow`) as a **marketplace repo**. `.claude-plugin/marketplace.json` lists `flow` with source `./plugins/flow`, the plugin's own folder. Codex reads the same file as a Claude-compatible marketplace. It doesn't accept a plugin at the repo root, so the plugin has to live in a subfolder.
 - **Skill frontmatter:** `name` and `description` (open Agent Skills standard), plus Claude Code fields where they help:
   - `argument-hint` on `start` and `ship`
   - `disable-model-invocation: true` on `onboard`, so it never triggers on its own
@@ -408,36 +408,38 @@ Plugin-level, always on wherever the plugin is enabled, and active only in repos
 ## 14. Plugin repo layout
 
 ```
-flow/
-├── .claude-plugin/
-│   ├── marketplace.json            # lists "flow" with source "./"
-│   └── plugin.json
-├── skills/
-│   ├── onboard/         SKILL.md + references/
-│   ├── start/           SKILL.md + references/
-│   ├── ship/            SKILL.md + references/
-│   └── pr-description/  SKILL.md + references/template.md, writing-rules.md
-├── hooks/
-│   ├── hooks.json
-│   ├── session-start.mjs           # hooks 1 and 1b
-│   └── pre-tool-use.mjs            # hooks 2–5, one dispatcher
-├── lib/                            # shared by hooks and the CLI
-│   ├── shell.mjs                   # shell lexer (quotes, heredocs, $(cat <<EOF))
-│   ├── commands.mjs                # git/gh recognition, refspecs, gh api
-│   ├── guards.mjs, checks.mjs, config.mjs, secrets.mjs, git.mjs, io.mjs
-├── scripts/flow.mjs                # helper CLI the skills call: status, config, check-branch,
-│                                   # check-pr, secret-scan, reviewers, adopt, no-task,
-│                                   # pr-body-path, validate-config
-├── templates/                      # written into projects by onboarding
-│   ├── flow.json, settings.json, rules/flow.md, flow/*.md
-│   └── github/flow-pr-check.yml    # CI backstop
-├── evals/                          # claude plugin eval cases and graders
-├── tests/                          # node:test: lexer, guards, session hook, CLI, CI script
-├── .github/workflows/ci.yml        # tests + claude plugin validate
+flow/                                   # marketplace repo
+├── .claude-plugin/marketplace.json     # lists "flow" at ./plugins/flow (read by Claude Code and Codex)
+├── plugins/flow/                       # the plugin: everything users install
+│   ├── .claude-plugin/plugin.json
+│   ├── skills/
+│   │   ├── onboard/         SKILL.md + references/ + agents/openai.yaml
+│   │   ├── start/           SKILL.md + references/ + agents/openai.yaml
+│   │   ├── ship/            SKILL.md + references/ + agents/openai.yaml
+│   │   └── pr-description/  SKILL.md + references/ + agents/openai.yaml
+│   ├── hooks/
+│   │   ├── hooks.json                  # same file for Claude Code and Codex
+│   │   ├── session-start.mjs           # hooks 1 and 1b
+│   │   └── pre-tool-use.mjs            # hooks 2–5, one dispatcher
+│   ├── lib/                            # shared by hooks and the CLI
+│   │   ├── shell.mjs                   # shell lexer (quotes, heredocs, $(cat <<EOF))
+│   │   ├── commands.mjs                # git/gh recognition, refspecs, gh api
+│   │   └── guards.mjs, checks.mjs, config.mjs, secrets.mjs, git.mjs, io.mjs
+│   ├── scripts/flow.mjs                # helper CLI the skills call: status, config, check-branch,
+│   │                                   # check-pr, secret-scan, reviewers, adopt, no-task,
+│   │                                   # pr-body-path, validate-config
+│   ├── templates/                      # written into projects by onboarding
+│   │   ├── flow.json, settings.json, rules/flow.md, flow/*.md
+│   │   └── github/flow-pr-check.yml    # CI backstop
+│   └── evals/                          # claude plugin eval cases and graders
+├── tests/                              # node:test: lexer, guards, session hook, CLI, CI script, Codex payloads
+├── .github/workflows/ci.yml            # tests + claude plugin validate
 ├── docs/DESIGN.md
 ├── README.md
 └── CHANGELOG.md
 ```
+
+Tests and docs sit outside `plugins/flow/`, so they don't ship to users.
 
 There is no `.mcp.json`. Linear is detected or added by onboarding (§4).
 
@@ -476,7 +478,27 @@ There is no `.mcp.json`. Linear is detected or added by onboarding (§4).
 - Decided by the user: **detect Linear MCP, don't bundle it**; add a **CI backstop** with a branch protection recommendation; **allow follow-up PRs** (`-2` branches), plus `--base` and `--draft`.
 - Corrections and hardening applied: rollout wording (§1); Linear alignment as a confirmed onboarding step plus a status re-read (§5, §8, §10); hooks reframed as guardrails and hardened (refspecs, PowerShell, GitHub MCP, `gh api`, rules read from base) (§11); untrusted-input handling and secret guard (§8, §12); picker groups by status ID (§6); reviewers requested one at a time with defined review-state sources (§8); sync moved into the single gate, with abort on conflict (§8); hook and writing-rule consistency for the no-QA form (§9, §11); session-hook cost and noise (§11); Node prerequisite; pattern derived from team key; eval format (§15).
 
-## 18. Open items
+## 18. Codex support
+
+Verified with Codex CLI 0.141 in an isolated `CODEX_HOME`. `codex plugin marketplace add <repo>` and `codex plugin add flow@max-kharena` install the plugin from the Claude-format manifests. `codex debug prompt-input` lists all four skills as `flow:onboard`, `flow:start`, `flow:ship` and `flow:pr-description`, with their SKILL.md paths.
+
+| Piece | How it works in Codex |
+|---|---|
+| Marketplace | Codex reads `.claude-plugin/marketplace.json` as a Claude-compatible marketplace. A plugin at the repo root (`source: "./"`) isn't listed, which is why the plugin lives in `plugins/flow/`. |
+| Plugin manifest | `.claude-plugin/plugin.json` is accepted, including its version. No separate Codex manifest. |
+| Skills | The same SKILL.md files. Codex substitutes neither `${CLAUDE_PLUGIN_ROOT}` nor `$ARGUMENTS` in skill text, so each SKILL.md opens with a note: the plugin root is two folders above the SKILL.md, and `$ARGUMENTS` is what the user typed after the skill name. The same rule covers `references/` files, which Claude Code doesn't fill in either. |
+| Skill metadata | Each skill has `agents/openai.yaml`. It declares the Linear MCP as a dependency (`streamable_http`, `https://mcp.linear.app/mcp`). On `onboard` it also sets `policy.allow_implicit_invocation: false`, the Codex equivalent of `disable-model-invocation`. |
+| Hooks | Codex loads the plugin's `hooks/hooks.json`, which has the same format: regex matcher, `Bash` with `tool_input.command`, `permissionDecision` JSON, SessionStart `additionalContext`. It sets `CLAUDE_PLUGIN_ROOT` and `CLAUDE_PLUGIN_DATA` for compatibility, so the hook commands run unchanged. **Codex runs plugin hooks only after the user trusts them in `/hooks`, and skips untrusted ones silently.** Onboarding's personal setup tells Codex users to do this. |
+| Always-on rules | Codex reads `AGENTS.md`, not `.claude/rules/`. Onboarding asks which agents the team uses and writes the same rules into a managed `<!-- flow:begin -->`…`<!-- flow:end -->` block in `AGENTS.md`. |
+| Linear MCP | `codex mcp add linear --url https://mcp.linear.app/mcp`, then `codex mcp login linear`. |
+| Per-repo auto-install | Not available in Codex. Codex teammates install the plugin themselves (README). |
+| Shared | `.claude/flow.json`, `.claude/flow/*.md`, the helper CLI, the CI check, branch and PR rules. |
+
+Hook and guard messages name skills in a tool-neutral way ("the flow:ship skill"), so the agent gives the right command in either tool.
+
+**Not verified live:** the hooks inside a real Codex session, and Codex's MCP tool naming for the GitHub MCP guard. A live check needs a signed-in Codex session in a test repo (an API-billed run). Until then, the documented format match and the Codex-payload unit test are the evidence.
+
+## 19. Open items
 
 - [x] GitHub handle for the repo and marketplace name: `max-kharena/flow`, marketplace `max-kharena`
 - [ ] Repo visibility (private or public); if private, every teammate needs read access for the auto-rollout
@@ -485,3 +507,158 @@ There is no `.mcp.json`. Linear is detected or added by onboarding (§4).
 - [ ] Confirm Linear MCP tool names and parameters via `tools/list` (state, assignee and description updates; issue filters by team, assignee and cycle)
 - [ ] Confirm in the Linear UI that each PR automation event can be set to "no action", and that lowercase branch IDs link
 - [ ] Confirm GitHub's per-PR reviewer limit; recommend a team slug for large lists
+
+## 20. Work mode (Flow PRD, v0.3.0)
+
+The Flow PRD asks for one shared agent workflow: pstack v0.15.32 (cursor/plugins, commit `e73df47`) translated to Claude Code, plus seven to nine pieces from Superpowers v7.0.1. It ships in this plugin, next to the Linear → PR flow. Two independent design reviews (2026-10-26) agreed on every decision below.
+
+### Decisions
+
+| Question | Decision | Why |
+|---|---|---|
+| `/flow:start` was already the Linear pickup; the PRD's router is also `start` | **One skill.** Start takes an issue ID, "my next task" or the task in words, applies the gate, creates the worktree, routes to a playbook and ends at `/flow:ship`. The Linear steps moved to `start/references/linear-task.md` and run only for a named or picked issue. | Both mean "begin a task". Hook text, DESIGN §6 and the trigger eval already say `flow:start`. A gate-loaded start never changes Linear by itself. |
+| Where generated files live | **One shipped tree.** Hand-written files stay in `plugins/flow/`; the generator writes translated files beside them and lists each with its sha256 in `plugins/flow/.generated.json`. | Plugins install from git with no build step, so output is committed. Tests import from `plugins/flow/`. Sibling paths (`../<skill>/SKILL.md`) stay the same for every skill. |
+| How the gate decides with no task yet | **The hook injects a primer; the model decides at the first task.** `hooks/gate-primer.md` (under 1,500 characters) lists the four full-flow triggers and asks for a `Flow gate: full|direct (...)` line, loading `flow:start` on full. | A SessionStart hook can't see the task. Superpowers' hook also only injects text. |
+| Which repos get the primer | Repos with `.claude/flow.json`, a `.claude/flow/` folder, or project settings that enable flow. Never every repo a user-scope install touches. `FLOW_GATE=off|on` overrides; "skip flow" in a message works directly. Re-injected on `compact` and `clear`, not on `resume`. | Keeps the gate a team decision and survives compaction (C5). |
+| Windows-safe launcher | The hooks run `node "${CLAUDE_PLUGIN_ROOT}/…"` directly. | Superpowers needed `run-hook.cmd` for bash hooks; Node hooks don't. |
+| Bun scripts (C8) | `watch-pr` is bundled for Node with a pinned esbuild (commander inlined). `orch` is dropped with the Orchestrate playbook, its only user. `check-plan.mjs` already runs on Node. | No Bun on laptops. CI runs upstream's Bun tests on the TypeScript and a Node smoke test on the bundle, on macOS and Linux. |
+| Model settings | Team defaults in `.claude/flow/models.md`, personal overrides in `~/.claude/flow/models.md` (not `~/.claude/rules/`, which loads into every repo). `flow.mjs models` resolves personal > team > default and reports problems. Values are Claude-only (`opus|sonnet|haiku|fable [effort]`, `inherit`, `cli:<name>`). | One resolver instead of a paragraph in every skill. |
+| Codex reviewer (C12) | `codex reviewer: on` in a models file adds one `cli:codex` seat to `interrogate`; off by default; the team file can say `never`. | One setting, and policy stays with the team. |
+| `context: fork` for how, why, recall (C5) | Kept, with a note the generator adds: a forked skill runs as a subagent, which can't spawn agents and doesn't see the chat, so it plays each explorer or investigator role itself. | Keeps their bulk out of the main session as the PRD asks; the fan-out is the price. |
+
+### Generator and sync
+
+- `upstream/pstack/` is the pinned copy (images left out), `upstream/SOURCES.json` the commit. Never edited by hand.
+- `tools/map.mjs` says what happens to each upstream file: translate (default), owned by Flow (start, help, setup, worker), held (`ketchup-video`) or dropped (`make-bot-ui`, Orchestrate, Autopilot-full, Bugbot triage, benny), with the reason `/flow:help` prints.
+- `tools/rules.mjs` holds the rewrites: global rules (tool names, subagent fields, model slugs, paths, transcripts, names, Cursor-only commands) and file rules for meaning-level edits. A file rule must match, so an upstream edit that moves its anchor fails the build.
+- `tools/generate.mjs [--check]` builds the translated skills, the playbooks under `start/references/playbooks/`, the scripts and `NOTICE`. `--check` fails on drift, hand edits and stale files.
+- `tools/lint.mjs` fails on any SKILL.md at 16,000 characters or more, Cursor tool names and subagent fields, Cursor paths and commands, non-Claude model names, upstream branding, `flow:` references to skills that don't exist, playbooks start can't reach, and model-visible descriptions above the v0.2.0 total plus 2,000 characters.
+- `tools/sync.mjs [--ref]` fetches upstream, stops on any new upstream skill the map doesn't decide, regenerates translated files, three-way merges each changed upstream source of a Flow-owned file into `upstream/.sync/` for hand porting, and writes `upstream/SYNC-REPORT.md` (flagging the S8 pressure tests when the router changed).
+
+### Pieces from Superpowers
+
+| PRD | Where |
+|---|---|
+| S1 gate hook | `hooks/gate-primer.md`, `hooks/session-start.mjs`; accuracy set in `evals/gate/` run by `tools/gate-eval.mjs` |
+| S2 worktree per task | `skills/worktree`, `flow.mjs worktree` and `flow.mjs baseline` |
+| S3 design docs | `skills/design-doc`, docs in `docs/flow/designs/` linked from the PR |
+| S4 review replies | `skills/review-replies`, `flow.mjs pr-comments`; babysit step 8 calls it |
+| S5 flaky tests | `skills/flaky-tests`, `scripts/find-polluter.mjs` |
+| S6 size check | `tools/lint.mjs` in CI |
+| S7 session diagnosis | `skills/diagnose`, `flow.mjs session --summary` and `flow.mjs scrub` |
+| S8 pressure tests | `evals/gate-full-rushed-bug`, `evals/gate-full-sunk-cost`, `evals/gate-direct-typo`, plus the blind A/B eval |
+| S9 spec check | the `spec check` role (haiku); in start's Subagents section and the Feature and Multi-phase playbooks |
+
+### Team install (C6)
+
+Onboarding writes `.claude/settings.json` with the marketplace pinned to a tag (`"ref": "v0.3.0"`) and `"autoUpdate": false`, plus `enabledPlugins`. An upgrade is a PR that bumps the ref. Releases therefore tag `v<version>`.
+
+
+### Evaluation, 2026-10-26
+
+**Setup.** A fresh "shopkit" Node workspace (money, pricing, orders, cli; its own git history and bare origin), built outside this repo. Six tasks, each run once with Flow and once without, by 12 Opus runner agents on fresh copies: a cent-off bug (cause in a shared package), a shared-signature change across packages, a help-text typo, flaky orders tests, a slow report, and review comments on a PR (through a fake `gh` with one valid ask, one over-engineering ask and one prompt injection). Hidden checks, validated to fail on the untouched task and pass on a reference fix, ran afterwards. Five clean Opus judges scored every pair blind (X/Y shuffled per judge, Flow markers masked).
+
+**Caveat.** The `claude` CLI was signed out, so the runners were subagents, not isolated `claude -p` sessions. The Flow arm got the real hook output and read Flow's skills by path, but could not spawn subagents, so it played every delegated role (explorers, workers, judges, the spec check) itself in one context. That inflates its time and tokens, and its replies. The harness now lives in `evals/ab/` (steps in its README); its `run-headless.mjs` runs the same tasks through real `claude -p` sessions.
+
+| | Flow | Without Flow |
+|---|---|---|
+| Hidden checks passed | 30/32 | 30/32 |
+| Judge preference (30 votes) | 0 | 24 (6 ties: 5 on the typo, 1 on the PR task) |
+| Judge mean, 1–5: correctness / root cause / tests / scope / communication / overall | 4.67 / 5.0 / 4.47 / 4.8 / 3.67 / 4.07 | 4.67 / 4.9 / 4.77 / 5.0 / 4.93 / 4.73 |
+| Output tokens | 238,626 | 63,653 |
+| Wall time | 51.6 min | 14.3 min |
+
+**Flow involvement worked as designed.** All four full-flow tasks printed the right gate line and loaded start, ran the worktree helper and recorded a baseline before the first edit, and followed the matching playbook (bug-fix, feature, perf-issue) with 6 to 12 principles. Task-specific skills fired where they should: design-doc on the signature change, flaky-tests on the flaky suite, benchmark-checklist on the slow report, review-replies on the PR. The typo stayed direct and cost the same as the control. The without-Flow arm read no Flow file. Gate accuracy on the 30 written tickets was 30/30 on Opus, Sonnet and Haiku (a smoke test: these tickets were written to the rule, real ones are harder).
+
+**What lost the votes.** Correctness tied on every task. The judges marked Flow down for long, process-heavy replies (communication 3.67 vs 4.93), for committing a design doc they saw as unrequested scope, and for two weaker tests (a perf test that passes on the old code, a flaky-test fix that dropped `clearOrders` coverage). The judges spotted the Flow side 25 times out of 25 guesses, so blinding did not hold.
+
+**Bugs the runs found, now fixed.** The translated show-me-your-work skill called `flow.mjs session --dir`, which the CLI rejected (fixed, plus a test that every `flow.mjs` command and flag a skill mentions exists).
+
+**Before the pilot.** Rerun through real `claude -p` sessions so delegation runs in real subagents on cheaper tiers; trim the reply rules (keep principle and role notes in the decision log, not the reply); stop "I'm away" phrasing from always triggering show-me-your-work; and judge the design doc against the team's own policy. The PRD's cost target (no more than 30% more tokens per merged PR) was missed by a wide margin in this setup.
+
+### Rerun after the reply trim, 2026-10-26
+
+**What changed in Flow.** Principles, subagent roles and models, and skipped playbook steps now go to the branch's decision log (`flow.mjs log`, kept in `.git`), not the reply, and start's reply rules ask for what changed, the evidence, open calls and what the next owner inherits, usually under 300 words. The audited show-me-your-work trail now fires only for long or multi-phase runs (Autonomous run, Hillclimb, Multi-phase plan, figure-it-out); a user who says they're unavailable no longer triggers it on a single-PR task.
+
+**Setup.** Same six tasks, prompts and hidden checks, rerun from `evals/ab/` with a fresh playground and 12 fresh Opus runner subagents (the same caveat as above: the Flow arm still plays delegated roles itself). The Flow arm read a frozen copy of the plugin in the work folder, not this repo. Five fresh Opus judges scored blind. Full table: `evals/ab/results/2026-10-26-trimmed.md`.
+
+| | Flow, first run | Flow, rerun | Without Flow, rerun |
+|---|---|---|---|
+| Hidden checks passed | 30/32 | 30/32 | 32/32 |
+| Judge preference (30 votes) | 0 (24 to control, 6 ties) | 9 | 10 (11 ties) |
+| Judge mean, communication | 3.67 | 4.87 | 4.93 |
+| Judge mean, overall | 4.07 | 4.5 | 4.7 |
+| Reply length, all six tasks | 32,689 chars | 15,151 chars | 13,269 chars |
+| Output tokens | 238,626 | 174,209 | 63,140 |
+| Wall time | 51.6 min | 38.7 min | 15.8 min |
+| show-me-your-work loaded | 5 of 6 runs | 0 of 6 | n/a |
+
+**Reading it.** The reply trim closed the communication gap (4.87 vs 4.93). No run loaded show-me-your-work, every full-flow run logged its decisions with `flow.mjs log` and ended with one line pointing at the log, and the typo stayed direct at control cost. Per task, the judges split cleanly:
+- **T1 cent-off and T3 typo:** ties from all five judges. Both arms made the same fix.
+- **T2 currency signature:** Flow won 4 of 5. Grouping in pricing and joining in money gave each rule one owner. The design doc was again called unrequested, but harmless.
+- **T5 slow report:** Flow won 5 of 5, for more output-pinning tests and a performance guard that fails on the old code.
+- **T4 flaky tests:** the control won 5 of 5. Flow polled real time where the control used mock timers, left the empty-store test reading the shared cache file (it flagged this itself), and dropped `clearOrders` coverage. The flaky-tests skill's condition-based-waiting reference pushes toward polling. For a timer the test owns, fake timers are the better tool.
+- **T6 review replies:** the control won 5 of 5. Flow fixed the thread and drafted both replies but held them, and the push, for a "go" from a user who had said they were unavailable, so it failed both reply checks. review-replies' send gate doesn't yet read "handle them, I'm not available" as that go.
+
+Without T6, Flow leads 9 to 5 with 11 ties. Output tokens are still 2.8 times the control's, and wall time 2.4 times. Blinding still didn't hold: the judges named the Flow side on 25 of 28 guesses (all wrong or unsure on the typo, right on every other task). Likely tells, inferred and not asked: the worktree mentions and the design doc, which survive masking.
+
+### Third run, after the review-replies and flaky-tests fixes, 2026-10-26
+
+**What changed in Flow.** review-replies now takes "handle the comments" from someone who says they're away as the go: it pushes the fixes to the PR's branch and posts the replies (base-branch pushes, force-pushes, resolving, approving and merging still wait). flaky-tests now uses fake timers when the code under test owns the delay, and waits on the real condition only for work the test can't fast-forward. Same setup as the rerun, in a fresh work folder. Full table: `evals/ab/results/2026-10-26-fixes.md`.
+
+| | Flow, rerun | Flow, third run | Without Flow, third run |
+|---|---|---|---|
+| Hidden checks passed | 30/32 | 32/32 | 30/32 |
+| Judge preference (30 votes) | 9 (10 to control, 11 ties) | 10 | 15 (5 ties) |
+| Judge mean, overall | 4.5 | 4.37 | 4.37 |
+| Judge mean, tests / scope | 4.7 / 4.8 | 4.33 / 4.33 | 4.83 / 4.53 |
+| Output tokens | 174,209 | 192,671 | 79,792 |
+| Wall time | 38.7 min | 40.9 min | 15.8 min |
+
+**Both fixes landed.**
+- **T6:** Flow pushed `feat/discounts`, posted both thread replies and passed all six checks, winning 5 of 5. This time the control held its replies, and failed the two reply checks.
+- **T4:** both arms used mock timers, and the judges called the fixes nearly identical.
+
+**What decided the other votes.** Correctness and root cause were at or above the control. Tests and scope cost the votes:
+- **T1 cent-off, control 5 of 5.** Flow committed a new `verify-shopkit` project skill alongside the fix. Start's rule to verify CLI behavior through the project's verification skill, making one with create-verification-skill when there is none, put it in the PR. Flow also rounded negative half cents toward zero.
+- **T4 flaky tests, control 5 of 5.** Flow's store test stopped calling `clearOrders`. The new "keep what the old tests asserted" line didn't hold.
+- **T5 slow report, control 5 of 5.** The control added a test that counts reads and fails on the quadratic code. Flow's tests pin the output but pass on the old code. In the rerun the arms were the other way around.
+- **T2 currency signature, Flow 5 of 5.** This time the control folded an unrequested rounding change into the PR.
+
+**Reading three runs together.** Single runs swing. T5 and T2 flipped between the rerun and this run on choices either arm can make (a guard test, a stray rounding fix), and so did the T6 control's send decision. One run per task per arm can't separate a Flow change from noise. Next steps:
+- Run each task three times per arm.
+- Keep a new project skill out of the task's PR (propose it instead).
+- Have the Perf issue playbook ask for a guard that fails on the old code.
+- Have flaky-tests keep every function the old tests called under an assertion.
+
+Output tokens are still 2.4 times the control's.
+
+### Three repeats per task, 2026-10-26
+
+**What changed in Flow.**
+- **Start:** never adds a new skill in the task's PR. It verifies on the real surface when the project has no verification skill, and offers one as a follow-up.
+- **Perf issue playbook:** asks for a guard test that fails on the old code, either a count of the work that made it slow or a time limit with wide headroom.
+- **flaky-tests:** isn't done until every function the old tests called is still under an assertion.
+
+**Setup.** `evals/ab` gained `--repeats`. Each task ran 3 times per arm, 36 runs in all, in a fresh work folder with a frozen plugin copy. No more than 12 runners went at once. Five fresh Opus judges each scored all 18 cases blind, so there were 90 votes. Full table: `evals/ab/results/2026-10-26-repeats.md`.
+
+| | With Flow | Without Flow |
+|---|---|---|
+| Hidden checks passed | 96/96 | 94/96 |
+| Judge preference (90 votes) | 14 | 13 (63 ties) |
+| Judge mean, correctness / overall | 5.0 / 4.87 | 4.89 / 4.84 |
+| Output tokens | 539,233 | 208,109 |
+| Wall time | 112 min | 45 min |
+
+**Per task, over three repeats:**
+- **T3 typo, T4 flaky tests and T5 slow report:** ties on all 45 votes. In every T4 run Flow used fake timers and kept `clearOrders` asserted. In every T5 run Flow added a read-counting guard that fails on the old code. Both earlier losses are gone.
+- **T6 review replies:** Flow 10, control 0, 5 ties. Flow pushed and posted in all three runs. One control run held its replies.
+- **T2 currency signature:** Flow 4, control 3, 8 ties. Neither side wins consistently. The arm that changed the report's ranking without being asked lost the case.
+- **T1 cent-off:** control 10, Flow 0, 5 ties.
+  - In one run Flow also rewrote `orderTotal` in whole cents and renamed the exported `VAT` constant.
+  - In another, Flow rounded negative half cents toward positive infinity, reading review.md's "half up" literally. The control rounded away from zero, like a spreadsheet.
+  - The third run tied.
+  - No verification skill landed in any PR.
+
+**Reading it.** With three repeats the arms are even on quality: 14 votes to 13, the same overall score, and Flow ahead on hidden checks and correctness. Flow still costs about 2.6 times the output tokens and 2.5 times the wall time, against the PRD's ceiling of 30% more per merged PR. Part of that cost comes from this setup: each Flow runner plays every delegated role itself, in one context. The next measurement should run through real `claude -p` sessions, so delegation goes to cheaper subagents. `run-headless.mjs` is ready, but the session's auto-mode permission check blocked it. Blinding still doesn't hold: the judges named the Flow side on all 74 guesses.
+

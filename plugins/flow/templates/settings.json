@@ -1,0 +1,11 @@
+{
+  "extraKnownMarketplaces": {
+    "max-kharena": {
+      "source": { "source": "github", "repo": "max-kharena/flow", "ref": "{{FLOW_REF}}" },
+      "autoUpdate": false
+    }
+  },
+  "enabledPlugins": {
+    "flow@max-kharena": true
+  }
+}

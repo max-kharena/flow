@@ -1,0 +1,23 @@
+{
+  "name": "flow",
+  "displayName": "Flow",
+  "version": "0.3.0",
+  "description": "Linear \u2192 PR delivery plus an agent work mode for Claude Code: a session gate that sends cross-package, design, unknown-cause and performance work through playbooks, worktrees with baseline tests, design docs, review replies, flaky-test tools and session diagnosis, adapted from open-source agent workflows (see NOTICE).",
+  "author": {
+    "name": "Max Kharena",
+    "url": "https://github.com/max-kharena"
+  },
+  "homepage": "https://github.com/max-kharena/flow",
+  "repository": "https://github.com/max-kharena/flow",
+  "keywords": [
+    "linear",
+    "github",
+    "pull-request",
+    "workflow",
+    "code-review",
+    "playbooks",
+    "worktree",
+    "agents"
+  ],
+  "license": "MIT"
+}
