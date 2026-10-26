@@ -6,7 +6,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
-import { HERE, paths, readJson, runDir } from './lib.mjs';
+import { HERE, paths, readJson, runDir, seededRandom } from './lib.mjs';
 import { TASKS } from './tasks.mjs';
 
 const { values } = parseArgs({ options: { judges: { type: 'string', default: '5' }, seed: { type: 'string', default: '20261026' } } });
@@ -17,8 +17,7 @@ const JUDGES = Number(values.judges);
 rmSync(P.judging, { recursive: true, force: true });
 mkdirSync(P.judging, { recursive: true });
 
-let seed = Number(values.seed);
-const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+const rnd = seededRandom(Number(values.seed));
 
 const mask = (text) =>
   text

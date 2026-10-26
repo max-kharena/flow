@@ -80,8 +80,10 @@ function runShell(command, cwd, timeoutMs) {
     let output = '';
     let timedOut = false;
     let finished = false;
+    // Trim only once the buffer doubles, so a chatty runner isn't copied per chunk.
     const keep = (chunk) => {
-      output = (output + chunk).slice(-MATCH_BYTES);
+      output += chunk;
+      if (output.length > 2 * MATCH_BYTES) output = output.slice(-MATCH_BYTES);
     };
     for (const stream of [child.stdout, child.stderr]) {
       stream.setEncoding('utf8');
@@ -101,7 +103,7 @@ function runShell(command, cwd, timeoutMs) {
       killGroup(child);
       child.stdout.destroy();
       child.stderr.destroy();
-      done({ code, timedOut, output, seconds: Math.round((Date.now() - started) / 100) / 10 });
+      done({ code, timedOut, output: output.slice(-MATCH_BYTES), seconds: Math.round((Date.now() - started) / 100) / 10 });
     };
     child.on('error', (err) => {
       output += String(err.message);
@@ -236,17 +238,4 @@ if (!failMatch) {
     );
   }
 }
-out(
-  {
-    verdict: 'found',
-    polluter,
-    message: `${polluter} leaves state behind that makes ${victim} fail when it runs first.`,
-    victim,
-    candidates: candidates.length,
-    reproduce: last.command,
-    tail: last.tail,
-    runs: steps.length,
-    steps,
-  },
-  0,
-);
+finish('found', `${polluter} leaves state behind that makes ${victim} fail when it runs first.`, { polluter, reproduce: last.command, tail: last.tail });

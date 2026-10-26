@@ -1,6 +1,6 @@
-// Builds upstream's Bun-run TypeScript helpers (watch-pr, orch) into single
-// Node scripts, so they run on any laptop without Bun (PRD C8). commander is
-// bundled in, which makes upstream's install-on-first-run bootstrap unneeded.
+// Builds upstream's Bun-run TypeScript PR watcher into a single Node script,
+// so it runs on any laptop without Bun (PRD C8). commander is bundled in,
+// which makes upstream's install-on-first-run bootstrap unneeded.
 import { build } from 'esbuild';
 import { join } from 'node:path';
 
@@ -15,10 +15,9 @@ const noBootstrap = {
 };
 
 // name -> how to start it. watch-pr's upstream entry is a Bun shebang file
-// that imports cli.ts; orch.ts runs itself under `import.meta.main`.
-export const BUNDLES = {
+// that imports cli.ts, so the bundle starts from cli.ts's main().
+const BUNDLES = {
   'watch-pr': { resolveDir: 'watch-pr', contents: "import { main } from './cli.ts';\nprocess.exitCode = await main(process.argv.slice(2));\n" },
-  orch: { resolveDir: 'orch', contents: "import './orch.ts';\n" },
 };
 
 // Returns { name: source } for every bundle, built from `scriptsDir`
@@ -34,7 +33,6 @@ export async function bundleScripts(scriptsDir, nodeModules) {
       format: 'esm',
       target: 'node20',
       plugins: [noBootstrap],
-      define: { 'import.meta.main': 'true' },
       banner: { js: BANNER },
       legalComments: 'none',
       logLevel: 'silent',

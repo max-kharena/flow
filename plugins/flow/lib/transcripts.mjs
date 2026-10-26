@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -5,9 +6,9 @@ import { redactSecrets } from './secrets.mjs';
 
 // Claude Code keeps one folder per working directory, named by the path with
 // every character other than a letter, digit or "-" turned into "-".
-export const projectSlug = (dir) => dir.replace(/[^A-Za-z0-9-]/g, '-');
+const projectSlug = (dir) => dir.replace(/[^A-Za-z0-9-]/g, '-');
 
-export function projectsRoot() {
+function projectsRoot() {
   return join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'projects');
 }
 
@@ -27,7 +28,7 @@ export function listSessions(dir) {
     .sort((a, b) => b.modified.localeCompare(a.modified));
 }
 
-function* events(file) {
+export function* events(file) {
   for (const line of readFileSync(file, 'utf8').split('\n')) {
     if (!line.trim()) continue;
     try {
@@ -41,10 +42,28 @@ function* events(file) {
 const textOf = (content) =>
   typeof content === 'string' ? content : Array.isArray(content) ? content.map((c) => (c.type === 'text' ? c.text : '')).join('\n') : '';
 
-const GATE_LINE = /\bFlow gate: (full|direct)\b[^\n]*/g;
+export const GATE_LINE = /\bFlow gate: (full|direct)\b[^\n]*/g;
 // Text Claude Code injects as a user message; not something the user typed.
 const INJECTED = /^\s*<(task-notification|system-reminder|agent-message|local-command-stdout|local-command-stderr)\b/;
 const PRIMER_MARK = 'flow-gate';
+
+// Token totals over a transcript's assistant lines. One response spans
+// several lines that repeat its usage, so each response counts once.
+export function usageCounter() {
+  const counted = new Set();
+  const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  const add = (ev) => {
+    const id = ev.message.id ?? ev.requestId ?? ev.uuid;
+    if (counted.has(id)) return;
+    counted.add(id);
+    const u = ev.message.usage ?? {};
+    tokens.input += u.input_tokens ?? 0;
+    tokens.output += u.output_tokens ?? 0;
+    tokens.cacheRead += u.cache_read_input_tokens ?? 0;
+    tokens.cacheWrite += u.cache_creation_input_tokens ?? 0;
+  };
+  return { tokens, add };
+}
 
 // What happened in one session, for the diagnose skill: which skills ran,
 // whether the gate primer arrived, repeated tool calls, tokens and errors.
@@ -53,16 +72,15 @@ export function summarizeSession(file) {
   const skills = [];
   const hooks = [];
   const gateDecisions = [];
+  // Keyed by a hash so long Write and Edit inputs aren't all kept in memory.
   const calls = new Map();
-  const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  const usage = usageCounter();
   let first = null;
   let last = null;
   let userTurns = 0;
   let toolErrors = 0;
   let primerSeen = false;
   let model = null;
-  // One response spans several lines that repeat its usage; count it once.
-  const counted = new Set();
   for (const ev of events(file)) {
     if (ev.timestamp) {
       first ??= ev.timestamp;
@@ -83,15 +101,7 @@ export function summarizeSession(file) {
     }
     if (ev.type === 'assistant' && ev.message) {
       model ??= ev.message.model ?? null;
-      const id = ev.message.id ?? ev.requestId ?? ev.uuid;
-      if (!counted.has(id)) {
-        counted.add(id);
-        const u = ev.message.usage ?? {};
-        tokens.input += u.input_tokens ?? 0;
-        tokens.output += u.output_tokens ?? 0;
-        tokens.cacheRead += u.cache_read_input_tokens ?? 0;
-        tokens.cacheWrite += u.cache_creation_input_tokens ?? 0;
-      }
+      usage.add(ev);
       for (const c of ev.message.content ?? []) {
         if (c.type === 'text') for (const m of c.text.matchAll(GATE_LINE)) gateDecisions.push(m[0].trim());
         if (c.type !== 'tool_use') continue;
@@ -100,17 +110,19 @@ export function summarizeSession(file) {
         if (c.name === 'Read' && /\/skills\/[^/]+\/(SKILL\.md|references\/)/.test(c.input?.file_path ?? '')) {
           skills.push({ skill: c.input.file_path.replace(/^.*\/skills\//, ''), via: 'Read' });
         }
-        const key = `${c.name} ${JSON.stringify(c.input ?? {})}`;
-        calls.set(key, (calls.get(key) ?? 0) + 1);
+        const call = `${c.name} ${JSON.stringify(c.input ?? {})}`;
+        const key = createHash('sha1').update(call).digest('base64');
+        const seen = calls.get(key);
+        if (seen) seen.count++;
+        else calls.set(key, { call: call.length > 200 ? `${call.slice(0, 200)}…` : call, count: 1 });
       }
     }
   }
   const subDir = join(file.replace(/\.jsonl$/, ''), 'subagents');
-  const repeated = [...calls]
-    .filter(([, n]) => n > 1)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 15)
-    .map(([key, count]) => ({ call: key.length > 200 ? `${key.slice(0, 200)}…` : key, count }));
+  const repeated = [...calls.values()]
+    .filter((c) => c.count > 1)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 15);
   return {
     file,
     sessionId: basename(file, '.jsonl'),
@@ -125,7 +137,7 @@ export function summarizeSession(file) {
     hooks,
     gate: { primerSeen, decisions: gateDecisions },
     repeatedCalls: repeated,
-    tokens,
+    tokens: usage.tokens,
     subagents: existsSync(subDir) ? readdirSync(subDir).filter((f) => f.endsWith('.jsonl')).length : 0,
   };
 }

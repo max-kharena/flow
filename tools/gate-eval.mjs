@@ -6,20 +6,19 @@
 //
 //   node tools/gate-eval.mjs [--runs 3] [--model sonnet] [--tickets evals/gate/tickets.json] [--json out.json]
 import { spawn } from 'node:child_process';
-import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { isMain, REPO } from './util.mjs';
 
-const REPO = fileURLToPath(new URL('..', import.meta.url));
 const PRIMER = join(REPO, 'plugins/flow/hooks/gate-primer.md');
 
-export function decision(text) {
+function decision(text) {
   const m = /Flow gate:\s*(full|direct)\b/i.exec(text ?? '');
   return m ? m[1].toLowerCase() : 'none';
 }
 
-export function majority(calls) {
+function majority(calls) {
   const counts = {};
   for (const c of calls) counts[c] = (counts[c] ?? 0) + 1;
   return Object.entries(counts).sort((a, b) => b[1] - a[1] || (a[0] === 'none' ? 1 : -1))[0][0];
@@ -88,4 +87,4 @@ async function main() {
   process.exit(agree >= Math.ceil(rows.length * 0.9) ? 0 : 1);
 }
 
-if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
+if (isMain(import.meta.url)) await main();

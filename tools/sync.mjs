@@ -13,34 +13,27 @@
 //    so nothing ships translated without a decision.
 // Exit 0 when the sync needs no hand work, 1 when the report lists some.
 import { execFileSync, spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { dirname, join, relative } from 'node:path';
 import { parseArgs } from 'node:util';
-import { REPO, translate, write } from './generate.mjs';
+import { translate, write } from './generate.mjs';
 import { lintPlugin } from './lint.mjs';
 import { LEFT_OUT, OWNED, SKILLS } from './map.mjs';
+import { isMain, posix, REPO, walk } from './util.mjs';
 
 const UPSTREAM = join(REPO, 'upstream', 'pstack');
 const SOURCES = join(REPO, 'upstream', 'SOURCES.json');
 const SYNC_DIR = join(REPO, 'upstream', '.sync');
 const REPORT = join(REPO, 'upstream', 'SYNC-REPORT.md');
 
-const posix = (p) => p.split(sep).join('/');
-
 function files(dir, excluded = []) {
+  if (!existsSync(dir)) return new Map();
   const out = new Map();
-  const walk = (d) => {
-    for (const name of readdirSync(d)) {
-      const full = join(d, name);
-      const rel = posix(relative(dir, full));
-      if (excluded.some((e) => rel.startsWith(e)) || name === '.git') continue;
-      if (statSync(full).isDirectory()) walk(full);
-      else out.set(rel, readFileSync(full));
-    }
-  };
-  if (existsSync(dir)) walk(dir);
+  for (const full of walk(dir, (name) => name === '.git')) {
+    const rel = posix(relative(dir, full));
+    if (!excluded.some((e) => rel.startsWith(e))) out.set(rel, readFileSync(full));
+  }
   return out;
 }
 
@@ -161,6 +154,6 @@ async function main() {
   }
 }
 
-if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMain(import.meta.url)) {
   process.exit(await main());
 }

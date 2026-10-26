@@ -2,15 +2,15 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { readText } from './io.mjs';
 
-export const TEAM_MODELS = '.claude/flow/models.md';
-export const MODELS = ['opus', 'sonnet', 'haiku', 'fable'];
-export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
-export const CODEX_COMMAND = 'codex exec -s read-only --skip-git-repo-check --ephemeral --color never -';
+const TEAM_MODELS = '.claude/flow/models.md';
+const MODELS = ['opus', 'sonnet', 'haiku', 'fable'];
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+const CODEX_COMMAND = 'codex exec -s read-only --skip-git-repo-check --ephemeral --color never -';
 
 // Every role a Flow skill spawns for, with Claude-only defaults: opus for
 // judgment, sonnet for routine work, haiku for the cheap spec check. A list
 // value is a panel, one subagent per entry.
-export const DEFAULT_ROLES = {
+const DEFAULT_ROLES = {
   'feature, refactoring': 'sonnet high',
   'bug-fix': 'sonnet high',
   'perf-issue': 'sonnet high',
@@ -33,11 +33,11 @@ export const DEFAULT_ROLES = {
 
 const SWITCHES = { 'codex reviewer': ['off', 'on', 'never'] };
 
-const normalize = (role) => role.trim().toLowerCase().replace(/\s+/g, ' ');
+export const normalize = (role) => role.trim().toLowerCase().replace(/\s+/g, ' ');
 
 // One seat: `opus xhigh`, `sonnet`, `inherit`, a full claude-* model ID, or
 // `cli:<name>`. Returns { model, effort } / { cli } or a problem string.
-export function parseSeat(text) {
+function parseSeat(text) {
   const parts = text.trim().split(/\s+/);
   if (parts.length === 1 && /^cli:[a-z0-9-]+$/.test(parts[0])) return { cli: parts[0].slice(4) };
   const [model, effort, extra] = parts;
@@ -49,7 +49,7 @@ export function parseSeat(text) {
 }
 
 // Parses a models.md file into { roles, switches, cli, problems }.
-export function parseModels(text, label) {
+function parseModels(text, label) {
   const result = { roles: {}, switches: {}, cli: {}, problems: [] };
   for (const [i, raw] of (text ?? '').split('\n').entries()) {
     const line = raw.trim();
@@ -78,7 +78,7 @@ export function parseModels(text, label) {
   return result;
 }
 
-export function personalModelsPath() {
+function personalModelsPath() {
   return join(process.env.FLOW_HOME ?? join(homedir(), '.claude', 'flow'), 'models.md');
 }
 
@@ -87,8 +87,10 @@ export function personalModelsPath() {
 export function resolveModels(root) {
   const teamFile = root ? join(root, TEAM_MODELS) : null;
   const personalFile = personalModelsPath();
-  const team = parseModels(teamFile && readText(teamFile), TEAM_MODELS);
-  const personal = parseModels(readText(personalFile), personalFile);
+  const teamText = teamFile && readText(teamFile);
+  const personalText = readText(personalFile);
+  const team = parseModels(teamText, TEAM_MODELS);
+  const personal = parseModels(personalText, personalFile);
   const roles = Object.entries(DEFAULT_ROLES).map(([role, def]) => {
     if (personal.roles[role]) return { role, seats: personal.roles[role], source: 'personal' };
     if (team.roles[role]) return { role, seats: team.roles[role], source: 'team' };
@@ -102,7 +104,7 @@ export function resolveModels(root) {
     for (const s of seats) if (s.cli && !cli[s.cli]) problems.push(`${role}: cli:${s.cli} has no "cli ${s.cli}:" line`);
   }
   return {
-    files: { team: teamFile && readText(teamFile) !== null ? teamFile : null, personal: readText(personalFile) !== null ? personalFile : null },
+    files: { team: teamText != null ? teamFile : null, personal: personalText != null ? personalFile : null },
     roles,
     codexReviewer: codex === 'on' ? { on: true, command: cli.codex } : { on: false },
     cli,

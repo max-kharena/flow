@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { editFrontmatter, translate } from '../tools/generate.mjs';
 import { lintPlugin } from '../tools/lint.mjs';
+import { sh } from './helpers.mjs';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 
@@ -116,10 +117,9 @@ function fakeUpstream(edit) {
   const dir = mkdtempSync(join(tmpdir(), 'flow-upstream-'));
   cpSync(join(REPO, 'upstream/pstack'), join(dir, 'pstack'), { recursive: true });
   edit(join(dir, 'pstack'));
-  const git = (...args) => execFileSync('git', args, { cwd: dir, stdio: 'pipe' });
-  git('init', '--quiet', '-b', 'main');
-  git('add', '.');
-  git('-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '--quiet', '-m', 'upstream');
+  sh(dir, 'git', ['init', '--quiet', '-b', 'main']);
+  sh(dir, 'git', ['add', '.']);
+  sh(dir, 'git', ['commit', '--quiet', '-m', 'upstream']);
   return dir;
 }
 

@@ -38,14 +38,21 @@ function secretPathMatcher(globs) {
 
 const redact = (s) => (s.length <= 8 ? '****' : `${s.slice(0, 4)}…${s.slice(-2)}`);
 
+// The secret in a rule's match (its first group, else the whole match), or
+// null when it is a placeholder.
+function secretIn(rule, m) {
+  const secret = m[1] ?? m[0];
+  return rule === 'assigned-secret' && PLACEHOLDER.test(secret) ? null : secret;
+}
+
 export function scanText(text, file, { linearUploads = false } = {}) {
   const findings = [];
   text.split(/\r?\n/).forEach((line, idx) => {
     for (const [rule, re] of RULES) {
       const m = re.exec(line);
-      if (!m) continue;
-      if (rule === 'assigned-secret' && PLACEHOLDER.test(m[1])) continue;
-      findings.push({ file, line: idx + 1, rule, preview: redact(m[1] ?? m[0]) });
+      const secret = m && secretIn(rule, m);
+      if (!secret) continue;
+      findings.push({ file, line: idx + 1, rule, preview: redact(secret) });
       break;
     }
     if (linearUploads && LINEAR_UPLOAD.test(line)) findings.push({ file, line: idx + 1, rule: 'linear-upload-url', preview: 'uploads.linear.app/…' });
@@ -53,17 +60,20 @@ export function scanText(text, file, { linearUploads = false } = {}) {
   return findings;
 }
 
+const RULES_EVERYWHERE = RULES.map(([rule, re]) => [rule, new RegExp(re.source, `${re.flags.replace('g', '')}g`)]);
+
 // Replaces every secret the rules recognize with `<redacted:rule>`.
 export function redactSecrets(text) {
   const counts = {};
   let out = text;
-  for (const [rule, re] of RULES) {
-    out = out.replace(new RegExp(re.source, `${re.flags.replace('g', '')}g`), (m, ...rest) => {
-      // With no capture group, the second argument is the match offset.
-      const secret = typeof rest[0] === 'string' ? rest[0] : m;
-      if (rule === 'assigned-secret' && PLACEHOLDER.test(secret)) return m;
+  for (const [rule, re] of RULES_EVERYWHERE) {
+    out = out.replace(re, (...args) => {
+      // replace() passes the match, its groups, then the offset (a number).
+      const m = args.slice(0, args.findIndex((a) => typeof a === 'number'));
+      const secret = secretIn(rule, m);
+      if (!secret) return m[0];
       counts[rule] = (counts[rule] ?? 0) + 1;
-      return m.replace(secret, `<redacted:${rule}>`);
+      return m[0].replace(secret, `<redacted:${rule}>`);
     });
   }
   return { text: out, counts };

@@ -2,15 +2,15 @@
 // Deterministic helpers for the flow skills. Every command prints JSON.
 // Exit codes: 0 ok, 1 check found problems, 2 usage error, 3 repo not set up.
 import { execFile } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs, promisify } from 'node:util';
 import { branchBlockers, branchProblems, prProblems, readNoTask, taskIdFromBranch, writeNoTask } from '../lib/checks.mjs';
 import { loadConfig, publicConfig, validateRawConfig } from '../lib/config.mjs';
 import { baseRef, currentBranch, git, mergeBase, repoInfo, run } from '../lib/git.mjs';
 import { parseJson, readJson, readText } from '../lib/io.mjs';
-import { resolveModels, seatText } from '../lib/models.mjs';
-import { prThreads } from '../lib/review.mjs';
+import { normalize, resolveModels, seatText } from '../lib/models.mjs';
+import { isBot, prThreads } from '../lib/review.mjs';
 import { scanBranch, scanText } from '../lib/secrets.mjs';
 import { listSessions, scrub, summarizeSession, transcriptDir } from '../lib/transcripts.mjs';
 import { ensureWorktree, logDecision, readBaseline, readDecisions, recordBaseline } from '../lib/worktree.mjs';
@@ -131,7 +131,6 @@ async function status(opts) {
 }
 
 const reviewerKey = (name) => String(name).split('/').pop().toLowerCase();
-const isBotLogin = (login) => /\[bot\]$/i.test(login);
 
 // Who to request review from. Without a PR number: the config list minus the
 // current user (for the confirmation). With one: minus the author and anyone
@@ -152,10 +151,10 @@ function reviewers(number, opts) {
     author = view.author?.login;
     requested = new Set((view.reviewRequests ?? []).map((r) => reviewerKey(r.login ?? r.slug ?? r.name ?? '')));
     if (opts.rerequest) {
-      const person = (a) => ({ login: a?.login ?? '', bot: Boolean(a?.is_bot) });
-      const inline = lines(gh(['api', `repos/{owner}/{repo}/pulls/${number}/comments`, '--paginate', '--jq', '.[].user | "\\(.login)\\t\\(.type)"'])).map((line) => {
+      const person = (a) => ({ login: a?.login ?? '', bot: isBot(a) });
+      const inline = lines(gh(['api', `repos/{owner}/{repo}/pulls/${number}/comments?per_page=100`, '--paginate', '--jq', '.[].user | "\\(.login)\\t\\(.type)"'])).map((line) => {
         const [login, type] = line.split('\t');
-        return { login, bot: type === 'Bot' };
+        return person({ login, type });
       });
       candidates = [
         ...(view.latestReviews ?? []).filter((r) => ['CHANGES_REQUESTED', 'COMMENTED'].includes(r.state)).map((r) => person(r.author)),
@@ -172,7 +171,7 @@ function reviewers(number, opts) {
     const key = reviewerKey(login);
     if (seen.has(key)) continue;
     seen.add(key);
-    const reason = key === authorKey ? 'author' : bot || isBotLogin(login) ? 'bot' : requested.has(key) ? 'already requested' : null;
+    const reason = key === authorKey ? 'author' : bot ? 'bot' : requested.has(key) ? 'already requested' : null;
     if (reason) skipped.push({ reviewer: login, reason });
     else request.push(login);
   }
@@ -232,7 +231,7 @@ function models(opts) {
   const resolved = resolveModels(info?.root ?? null);
   const roles = resolved.roles.map((r) => ({ role: r.role, value: r.seats.map(seatText).join(', '), source: r.source }));
   if (opts.role) {
-    const want = opts.role.trim().toLowerCase();
+    const want = normalize(opts.role);
     const match = roles.find((r) => r.role === want);
     if (!match) fail(`unknown role "${opts.role}"; roles: ${roles.map((r) => r.role).join('; ')}`);
     out({ ...match, problems: resolved.problems });
@@ -244,31 +243,30 @@ function session(opts) {
   // Claude Code names the folder after the directory the session started in,
   // which is usually the repo root.
   const root = repoInfo(process.cwd())?.root;
-  const dirs = [...new Set([process.cwd(), process.env.PWD, root].filter(Boolean))].map(transcriptDir);
-  const dir = dirs.find((d) => listSessions(d).length) ?? dirs[0];
-  const sessions = listSessions(dir);
+  const candidates = [...new Set([process.cwd(), process.env.PWD, root].filter(Boolean))].map((d) => ({ dir: transcriptDir(d), sessions: listSessions(transcriptDir(d)) }));
+  const { dir, sessions } = candidates.find((c) => c.sessions.length) ?? candidates[0];
   if (!opts.summary) out({ dir, sessions: sessions.slice(0, 10) });
   const file = opts.file ?? (opts.id ? join(dir, `${opts.id}.jsonl`) : sessions[0]?.file);
-  if (!file || !readText(file)) fail(`no transcript found${file ? ` at ${file}` : ` in ${dir}`}`, 1);
+  if (!file || !existsSync(file)) fail(`no transcript found${file ? ` at ${file}` : ` in ${dir}`}`, 1);
   out(summarizeSession(file));
 }
 
-function baseline(rest, opts) {
+// `afterDashes` is everything after `--`: one argument is a shell command
+// line, several are argv, run without a shell.
+function baseline(rest, opts, afterDashes) {
   const { info, branch } = currentRepoBranch();
   if (opts.show) out(readBaseline(info.commonDir, branch));
-  const sep = process.argv.indexOf('--');
   const name = rest[0];
-  // One argument after -- is a shell command line; several are argv, run without a shell.
-  const args = sep === -1 ? [] : process.argv.slice(sep + 1);
-  const command = args.length === 1 ? args[0] : args;
-  if (!name || !args.length) fail('usage: baseline <name> -- <command>');
-  const run = recordBaseline(info, branch, name, command, { cwd: process.cwd() });
+  const command = afterDashes.length === 1 ? afterDashes[0] : afterDashes;
+  if (!name || !afterDashes.length) fail('usage: baseline <name> -- <command>');
+  const run = recordBaseline(info.commonDir, branch, name, command, process.cwd());
   out({ branch, ...run, passed: run.exitCode === 0 });
 }
 
+const dashdash = process.argv.indexOf('--');
+const afterDashes = dashdash === -1 ? [] : process.argv.slice(dashdash + 1);
 let parsed;
 try {
-  const dashdash = process.argv.indexOf('--');
   parsed = parseArgs({ args: process.argv.slice(2, dashdash === -1 ? undefined : dashdash), options: OPTIONS, allowPositionals: true });
 } catch (err) {
   fail(`${err.message}\n\n${USAGE}`);
@@ -335,13 +333,13 @@ switch (command) {
     break;
   }
   case 'baseline':
-    baseline(rest, opts);
+    baseline(rest, opts, afterDashes);
     break;
   case 'log': {
     const { info, branch } = currentRepoBranch();
     if (opts.show) out({ branch, ...readDecisions(info.commonDir, branch) });
     if (rest.length < 3 || rest.length > 5) fail('usage: log <phase> <decision> <why> [<evidence>] [<result>]');
-    out({ branch, ...logDecision(info, branch, rest) });
+    out({ branch, ...logDecision(info.commonDir, branch, rest) });
     break;
   }
   case 'pr-comments': {

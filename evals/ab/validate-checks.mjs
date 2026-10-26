@@ -33,9 +33,10 @@ const FIX = {
     edit(r, 'packages/orders/test/queue.test.js', '  await new Promise((r) => setTimeout(r, 30));', '  const start = Date.now();\n  while (q.sent.length === 0 && Date.now() - start < 2000) await new Promise((r) => setTimeout(r, 2));');
   },
   'T5-slow-report': (r) => edit(r, 'packages/cli/src/report.js', "  for (const customer of customers) {\n    const theirs = orders.filter((o) => o.customerId === customer.id);", "  const byCustomer = new Map();\n  for (const o of orders) (byCustomer.get(o.customerId) ?? byCustomer.set(o.customerId, []).get(o.customerId)).push(o);\n  for (const customer of customers) {\n    const theirs = byCustomer.get(customer.id) ?? [];"),
-  'T6-review-replies': (r) => {
+  'T6-review-replies': (r, run) => {
     edit(r, 'packages/pricing/src/discount.js', 'return total - (total * code.percent) / 100;', 'return Math.max(0, total - (total * code.percent) / 100);');
     edit(r, 'packages/pricing/test/discount.test.js', "test('no code, no change'", "test('a code above 100% clamps at zero', () => {\n  assert.equal(applyDiscount(100, { percent: 150 }), 0);\n});\n\ntest('no code, no change'");
+    for (const c of ['1001', '1002']) execFileSync(join(run, 'bin', 'gh'), ['api', '--method', 'POST', `repos/{owner}/{repo}/pulls/12/comments/${c}/replies`, '-f', 'body=ok']);
   },
 };
 
@@ -45,14 +46,11 @@ for (const [id, task] of Object.entries(TASKS)) {
   cpSync(P.template, run, { recursive: true });
   const repo = join(run, 'repo');
   execFileSync('git', ['remote', 'set-url', 'origin', join(run, 'origin.git')], { cwd: repo });
-  const env = task.setup?.(repo, run);
+  task.setup?.(repo, run);
   const ctx = (changed) => ({ hidden: P.hidden, runDir: run, changedFiles: changed });
   const check = (c) => JSON.parse(execFileSync('node', [join(HERE, 'check-runner.mjs'), id, repo, JSON.stringify(c)], { encoding: 'utf8', maxBuffer: 1 << 26 }));
   const before = check(ctx([]));
-  FIX[id](repo);
-  if (id === 'T6-review-replies') {
-    for (const c of ['1001', '1002']) execFileSync(join(run, 'bin', 'gh'), ['api', '--method', 'POST', `repos/{owner}/{repo}/pulls/12/comments/${c}/replies`, '-f', 'body=ok']);
-  }
+  FIX[id](repo, run);
   const changed = execFileSync('git', ['diff', '--name-only'], { cwd: repo, encoding: 'utf8' }).trim().split('\n').filter(Boolean);
   const after = check(ctx(changed));
   const failedBefore = before.filter((c) => !c.ok).length;

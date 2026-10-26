@@ -8,31 +8,20 @@
 // change is a rule in tools/rules.mjs. Flow-owned files (tools/map.mjs OWNED)
 // are hand-written and the generator refuses to touch them.
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join, relative } from 'node:path';
+import { readJson } from '../plugins/flow/lib/io.mjs';
 import { bundleScripts } from './bundle.mjs';
 import { AGENTS, DROP_FILE, NOTICE_SOURCES, OWNED, PLAYBOOKS, SCRIPTS, SKILLS, SKILL_FRONTMATTER } from './map.mjs';
 import { FILE_RULES, GLOBAL_RULES } from './rules.mjs';
+import { isMain, posix, REPO, walk } from './util.mjs';
 
-export const REPO = fileURLToPath(new URL('..', import.meta.url));
 const UPSTREAM = join(REPO, 'upstream', 'pstack');
 const OUT = join(REPO, 'plugins', 'flow');
 const MANIFEST = join(OUT, '.generated.json');
 
-const posix = (p) => p.split(sep).join('/');
 const sha = (text) => createHash('sha256').update(text).digest('hex');
 const TRANSLATED = /\.(md|tsv|sh)$/;
-
-function walk(dir) {
-  const out = [];
-  for (const name of readdirSync(dir)) {
-    const full = join(dir, name);
-    if (statSync(full).isDirectory()) out.push(...walk(full));
-    else out.push(full);
-  }
-  return out;
-}
 
 // Rewrites YAML frontmatter fields. `edits` maps a key to a new value, or to
 // null to drop it; keys not present are appended in the order given.
@@ -110,9 +99,7 @@ export async function plan() {
   }
   for (const [src, dest] of Object.entries(SCRIPTS.copy)) emit(src, dest);
   const bundles = await bundleScripts(join(UPSTREAM, SCRIPTS.bundleFrom), join(REPO, 'node_modules'));
-  for (const [name, text] of Object.entries(bundles)) {
-    if (SCRIPTS.bundle[name]) add(SCRIPTS.bundle[name], text);
-  }
+  for (const [name, dest] of Object.entries(SCRIPTS.bundle)) add(dest, bundles[name]);
   for (const [src, dest] of Object.entries(AGENTS)) emit(src, dest);
 
   const notice = NOTICE_SOURCES.map(({ title, file }) => `${title}\n\n${readFileSync(join(REPO, file), 'utf8').trim()}\n`).join('\n---\n\n');
@@ -123,13 +110,7 @@ export async function plan() {
   return files;
 }
 
-function readManifest() {
-  try {
-    return JSON.parse(readFileSync(MANIFEST, 'utf8'));
-  } catch {
-    return { files: {} };
-  }
-}
+const readManifest = () => readJson(MANIFEST) ?? { files: {} };
 
 function source() {
   return JSON.parse(readFileSync(join(REPO, 'upstream', 'SOURCES.json'), 'utf8')).pstack;
@@ -171,7 +152,7 @@ export async function write() {
   return files.size;
 }
 
-if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMain(import.meta.url)) {
   try {
     if (process.argv.includes('--check')) {
       const problems = await check();

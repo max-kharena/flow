@@ -3,10 +3,9 @@
 // workspace with its own git history and bare origin (template/), and the
 // hidden data the checks use (hidden/). Per-task setup lives in tasks.mjs.
 //   FLOW_AB_WORK=<dir> node evals/ab/playground.mjs
-import { execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { paths } from './lib.mjs';
+import { paths, shopGit as git } from './lib.mjs';
 import { prepareHidden } from './tasks.mjs';
 
 const P = paths();
@@ -16,7 +15,7 @@ rmSync(P.hidden, { recursive: true, force: true });
 const repo = join(root, 'repo');
 const origin = join(root, 'origin.git');
 
-export const FILES = {
+const FILES = {
   'package.json': JSON.stringify({ name: 'shopkit', private: true, type: 'module', scripts: { test: 'node --test "packages/*/test/*.test.js"' } }, null, 2) + '\n',
   'README.md': `# shopkit
 
@@ -241,8 +240,6 @@ test('help names the commands', () => {
 `,
 };
 
-const git = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: 'pipe', encoding: 'utf8' }).trim();
-const ENV_ARGS = ['-c', 'user.name=Shop Dev', '-c', 'user.email=dev@shopkit.test', '-c', 'commit.gpgsign=false'];
 
 mkdirSync(repo, { recursive: true });
 git(root, 'init', '--quiet', '--bare', '-b', 'main', origin);
@@ -252,7 +249,7 @@ for (const [file, text] of Object.entries(FILES)) {
   writeFileSync(join(repo, file), text);
 }
 git(repo, 'add', '-A');
-git(repo, ...ENV_ARGS, 'commit', '--quiet', '-m', 'shopkit: money, pricing, orders and cli packages');
+git(repo, 'commit', '--quiet', '-m', 'shopkit: money, pricing, orders and cli packages');
 git(repo, 'remote', 'add', 'origin', origin);
 git(repo, 'push', '--quiet', '-u', 'origin', 'main');
 git(repo, 'remote', 'set-head', 'origin', 'main');

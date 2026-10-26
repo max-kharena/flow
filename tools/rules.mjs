@@ -5,19 +5,22 @@
 //
 // A rule's `to` may be a function of (ctx, ...match); ctx.references is true
 // for files outside SKILL.md, where Claude Code fills in no ${...} variables.
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { SKILLS } from './map.mjs';
+import { REPO } from './util.mjs';
 
 const ROUTING = '../setup/references/model-routing.md';
 const root = (ctx) => (ctx.references ? '<flow>' : '${CLAUDE_PLUGIN_ROOT}');
-const routing = (ctx) => (ctx.dest.startsWith('skills/start/') ? ROUTING : ROUTING);
 
-// Skills users type as /flow:<name>. Filled in by generate.mjs from the map.
-export const SKILL_NAMES = [
-  'architect', 'arena', 'automate-me', 'benchmark-checklist', 'blast-radius', 'bro', 'correct',
-  'create-formal-verification-skill', 'create-verification-skill', 'figure-it-out', 'how', 'in-your-own-words',
-  'interrogate', 'ketchup', 'maintain-formal-verification-skill', 'maintain-verification-skill', 'no-comments',
-  'recall', 'reflect', 'sharpen', 'show-me-your-work', 'statechart', 'swarm', 'tdd', 'teach', 'technical-writing',
-  'typescript-best-practices', 'unslop', 'why', 'start', 'help', 'setup', 'worktree', 'design-doc', 'review-replies',
-  'flaky-tests', 'diagnose',
+// Skills users type as /flow:<name>: every upstream skill except principles
+// under its Flow name (dropped and held ones left out), plus Flow's own.
+const FLOW_SKILLS = ['worktree', 'design-doc', 'review-replies', 'flaky-tests', 'diagnose'];
+const SKILL_NAMES = [
+  ...readdirSync(join(REPO, 'upstream', 'pstack', 'skills'))
+    .filter((name) => !name.startsWith('principle-'))
+    .flatMap((name) => (SKILLS[name] ? [SKILLS[name].owned].filter(Boolean) : [name])),
+  ...FLOW_SKILLS,
 ];
 
 const MODEL_BOILERPLATE =
@@ -25,17 +28,16 @@ const MODEL_BOILERPLATE =
 
 export const GLOBAL_RULES = [
   // Model settings: one routing file instead of a per-skill paragraph.
-  { from: MODEL_BOILERPLATE, to: (ctx) => `Resolve each role per [model routing](${routing(ctx)}). ` },
+  { from: MODEL_BOILERPLATE, to: `Resolve each role per [model routing](${ROUTING}). ` },
   {
     from: /Pick each subagent's reasoning level and fast or standard speed for the job, per the Subagents section of the \*\*poteto-mode\*\* skill\./g,
     to: 'Pick each subagent\'s effort for the job, per the Subagents section of the **start** skill.',
   },
   {
     from: /the `([a-z, -]+)` line in (?:the )?`?(?:~\/\.cursor\/rules\/)?pstack-models\.mdc`?(?: rule)?/g,
-    to: (ctx, _m, role) => `the \`${role}\` role in Flow's model settings ([model routing](${routing(ctx)}))`,
+    to: (_ctx, _m, role) => `the \`${role}\` role in Flow's model settings ([model routing](${ROUTING}))`,
   },
-  { from: /~\/\.cursor\/rules\/pstack-models\.mdc/g, to: (ctx) => `Flow's model settings ([model routing](${routing(ctx)}))` },
-  { from: /`?pstack-models\.mdc`?(?: rule)?/g, to: (ctx) => `Flow's model settings ([model routing](${routing(ctx)}))` },
+  { from: /`?pstack-models\.mdc`?(?: rule)?/g, to: `Flow's model settings ([model routing](${ROUTING}))` },
   { from: /If the rule or (?:that|the) line is missing/g, to: 'If no setting names the role' },
   { from: /`grok-4\.7-xhigh-fast`/g, to: '`sonnet`' },
   { from: /`claude-opus-5-5-xhigh`/g, to: '`opus xhigh`' },
@@ -58,7 +60,6 @@ export const GLOBAL_RULES = [
   },
   { from: /`create-skill`'s YAML rules/g, to: 'the Agent Skills YAML rules' },
   { from: /`create-skill`'s writing guidelines/g, to: 'the Authoring a skill playbook\'s rules' },
-  { from: /`create-skill`/g, to: '`skill-creator`' },
   { from: /\bcreate-skill\b/g, to: 'skill-creator' },
 
   // Claude Code transcripts (PRD C9).
@@ -72,7 +73,7 @@ export const GLOBAL_RULES = [
 
   {
     from: /If the Task tool rejects a configured entry, run that (?:seat|reviewer) on its family's (?:table )?default and say so\. Families go by prefix:[\s\S]*?from its error message\./g,
-    to: (ctx) => `If the Agent tool rejects a configured entry, follow the rejection rule in [model routing](${routing(ctx)}).`,
+    to: `If the Agent tool rejects a configured entry, follow the rejection rule in [model routing](${ROUTING}).`,
   },
   { from: /in one message with `run_in_background: true`, /g, to: 'in one message, ' },
   { from: /\breadonly (judge|subagent|reviewer)/g, to: 'read-only (`Explore`) $1' },
@@ -83,15 +84,12 @@ export const GLOBAL_RULES = [
   { from: /\ba Agent\b/g, to: 'an Agent' },
   { from: /\bAskQuestion\b/g, to: 'AskUserQuestion' },
   { from: /`allow_multiple: true`/g, to: '`multiSelect: true`' },
-  { from: /\bOpen a todolist\b/g, to: 'Open a task list' },
   { from: /\btodolist\b/g, to: 'task list' },
-  { from: /subagent_type: "poteto-agent"/g, to: 'subagent_type: "flow:worker"' },
   { from: /subagent_type: "comment-sicko"/g, to: 'subagent_type: "flow:comment-sicko"' },
   { from: /`subagent_type: generalPurpose`/g, to: '`subagent_type: "general-purpose"`' },
   { from: /\bgeneralPurpose\b/g, to: 'general-purpose' },
   { from: /`environment: "cloud"`/g, to: '`isolation: "worktree"`' },
   { from: /, `run_in_background: true`/g, to: '' },
-  { from: /`poteto-agent`/g, to: '`flow:worker`' },
   { from: /\bpoteto-agent\b/g, to: 'flow:worker' },
 
   // Cursor-only commands (PRD C10).
@@ -123,16 +121,12 @@ export const GLOBAL_RULES = [
   { from: /`scripts\/watch-pr\/watch-pr`/g, to: '`node scripts/watch-pr.mjs`' },
 
   // Names.
-  { from: /`\/poteto-mode`/g, to: '`/flow:start`' },
   { from: /\/poteto-mode\b/g, to: '/flow:start' },
-  { from: /`\/setup-pstack`/g, to: '`/flow:setup`' },
   { from: /\/setup-pstack\b/g, to: '/flow:setup' },
   { from: /\/poteto-help\b/g, to: '/flow:help' },
-  { from: /\*\*poteto-mode\*\*/g, to: '**start**' },
   { from: /\bpoteto-mode\b/g, to: 'start' },
   { from: /\bsetup-pstack\b/g, to: 'setup' },
   { from: new RegExp(`\`/(${SKILL_NAMES.join('|')})\``, 'g'), to: '`/flow:$1`' },
-  { from: new RegExp(`\\[\`/(${SKILL_NAMES.join('|')})\`\\]`, 'g'), to: '[`/flow:$1`]' },
   { from: /\bthe pstack plugin\b/g, to: 'the Flow plugin' },
   { from: /\bpstack's\b/g, to: 'Flow\'s' },
   { from: /\bpstack\b/g, to: 'Flow' },
@@ -144,7 +138,7 @@ const forkNote = (what) =>
   `> **Runs forked.** Claude Code runs this skill as a subagent, so its bulk stays out of the main chat. A subagent cannot spawn agents. Where the steps below say to spawn ${what}, do that role yourself, one at a time, using its prompt file as your checklist, and keep the same output. You don't see the parent conversation: the question is in the arguments. If it is vague, state your reading of it and answer that.\n\n`;
 
 const CODEX_SEAT =
-  '\n\nIf Flow\'s model settings turn on the Codex reviewer (`codex reviewer: on`), add one more seat, labeled `cli:codex`, run through the Codex CLI as [model routing](../setup/references/model-routing.md) describes. It is off by default.';
+  `\n\nIf Flow's model settings turn on the Codex reviewer (\`codex reviewer: on\`), add one more seat, labeled \`cli:codex\`, run through the Codex CLI as [model routing](${ROUTING}) describes. It is off by default.`;
 
 export const FILE_RULES = [
   { id: 'how-fork', files: ['skills/how/SKILL.md'], from: /^# How\n\n/m, to: () => `# How\n\n${forkNote('explorers or an explainer')}` },
@@ -166,7 +160,7 @@ export const FILE_RULES = [
     id: 'interrogate-fallback',
     files: ['skills/interrogate/SKILL.md'],
     from: /If the Task tool rejects a configured entry, run that reviewer on its family's table default and say so\.[^\n]*/,
-    to: 'If the Agent tool rejects a configured entry, follow the rejection rule in [model routing](../setup/references/model-routing.md). Do not block the review on a model choice.',
+    to: `If the Agent tool rejects a configured entry, follow the rejection rule in [model routing](${ROUTING}). Do not block the review on a model choice.`,
   },
   {
     id: 'interrogate-codex-seat',

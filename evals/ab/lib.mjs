@@ -1,6 +1,7 @@
 // Paths shared by the A/B eval scripts. Everything a run touches (the
 // playground copies, the frozen plugin, transcripts, packets) lives in a work
 // folder outside this repo, set by FLOW_AB_WORK (default <tmp>/flow-ab).
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
@@ -11,7 +12,7 @@ export const REPO = resolve(HERE, '..', '..');
 export const SOURCE_PLUGIN = join(REPO, 'plugins', 'flow');
 export const ARMS = ['flow', 'control'];
 
-export function workDir() {
+function workDir() {
   const dir = resolve(process.env.FLOW_AB_WORK ?? join(tmpdir(), 'flow-ab'));
   mkdirSync(dir, { recursive: true });
   const real = realpathSync(dir);
@@ -35,6 +36,13 @@ export function paths(work = workDir()) {
 }
 
 export const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'));
+
+// git as the playground's one developer, never with the user's identity or signing.
+export const shopGit = (cwd, ...args) =>
+  execFileSync('git', ['-c', 'user.name=Shop Dev', '-c', 'user.email=dev@shopkit.test', '-c', 'commit.gpgsign=false', ...args], { cwd, stdio: 'pipe', encoding: 'utf8' }).trim();
+
+// Seeded, so generated data and X/Y labels come out the same on every run.
+export const seededRandom = (seed) => () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
 export const runDir = (P, task, arm, rep = 1) => join(P.runs, task, String(rep), arm);
 // One task run once per arm is a case; --repeats makes several cases per task.
 export const caseId = (task, rep = 1) => `${task}#${rep}`;

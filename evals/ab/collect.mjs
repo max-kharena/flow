@@ -9,6 +9,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
+import { events, GATE_LINE, usageCounter } from '../../plugins/flow/lib/transcripts.mjs';
 import { HERE, paths, readJson, REPO } from './lib.mjs';
 import { TASKS } from './tasks.mjs';
 
@@ -39,17 +40,7 @@ function resultTree(repo, base) {
   return { tree: scored[0]?.tree ?? repo, trees: scored };
 }
 
-const events = (file) =>
-  existsSync(file)
-    ? readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => {
-        try {
-          return JSON.parse(l);
-        } catch {
-          return null;
-        }
-      }).filter(Boolean)
-    : [];
-
+// Tool results nest their text: a string, or parts that hold text or more parts.
 const textOf = (content) =>
   typeof content === 'string'
     ? content
@@ -57,16 +48,17 @@ const textOf = (content) =>
       ? content.map((c) => (typeof c === 'string' ? c : c.text ?? textOf(c.content ?? ''))).join('\n')
       : '';
 
+const pluginRead = new RegExp(`(?:cat|sed -n [^ ]+|head(?: -\\d+)?) (${plugin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/[^\\s;&|]+)`, 'g');
+
 function analyze(file) {
-  const evs = events(file);
+  const evs = existsSync(file) ? events(file) : [];
   const tools = {};
   const flowReads = new Set();
   const calls = [];
   const gate = new Set();
   const loaded = new Set();
   const books = new Set();
-  const seen = new Set();
-  const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  const usage = usageCounter();
   let lastText = '';
   let first = null;
   let last = null;
@@ -86,20 +78,11 @@ function analyze(file) {
       }
     }
     if (ev.type !== 'assistant' || !ev.message) continue;
-    // One response is split over several lines that repeat its usage.
-    const id = ev.message.id ?? ev.uuid;
-    if (!seen.has(id)) {
-      seen.add(id);
-      const u = ev.message.usage ?? {};
-      tokens.input += u.input_tokens ?? 0;
-      tokens.output += u.output_tokens ?? 0;
-      tokens.cacheRead += u.cache_read_input_tokens ?? 0;
-      tokens.cacheWrite += u.cache_creation_input_tokens ?? 0;
-    }
+    usage.add(ev);
     for (const c of ev.message.content ?? []) {
       if (c.type === 'text') {
         lastText = c.text;
-        for (const g of c.text.match(/Flow gate: (full|direct)[^\n]*/g) ?? []) gate.add(g);
+        for (const m of c.text.matchAll(GATE_LINE)) gate.add(m[0].trim());
       }
       if (c.type !== 'tool_use') continue;
       if (c.name === 'SubagentHandback' && c.input?.message) lastText = c.input.message;
@@ -108,7 +91,7 @@ function analyze(file) {
       calls.push(input);
       const fp = c.input?.file_path ?? c.input?.path ?? '';
       if (c.name === 'Read' && fp.startsWith(plugin)) flowReads.add(fp.slice(plugin.length + 1));
-      if (c.name === 'Bash') for (const m of (c.input?.command ?? '').matchAll(new RegExp(`(?:cat|sed -n [^ ]+|head(?: -\\d+)?) (${plugin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/[^\\s;&|]+)`, 'g'))) flowReads.add(`${m[1].slice(plugin.length + 1)} (bash)`);
+      if (c.name === 'Bash') for (const m of (c.input?.command ?? '').matchAll(pluginRead)) flowReads.add(`${m[1].slice(plugin.length + 1)} (bash)`);
     }
   }
   const all = calls.join('\n');
@@ -116,7 +99,7 @@ function analyze(file) {
   const minutes = first && last ? (Date.parse(last) - Date.parse(first)) / 60000 : durationMs ? durationMs / 60000 : null;
   return {
     tools,
-    tokens,
+    tokens: usage.tokens,
     minutes: minutes == null ? null : Math.round(minutes * 100) / 100,
     gate: [...gate],
     flowReads: [...flowReads],
@@ -146,7 +129,6 @@ const results = [];
 for (const run of runs) {
   if (only && !only.includes(`${run.case}/${run.arm}`)) continue;
   const { tree, trees } = resultTree(run.repo, run.base);
-  git(tree, ['add', '-A', '-N']);
   const diff = git(tree, ['diff', run.base, '--', '.', ':(exclude)docs/flow']);
   const changedFiles = git(tree, ['diff', '--name-only', run.base]).trim().split('\n').filter(Boolean);
   writeFileSync(join(run.dir, 'result.diff'), diff);

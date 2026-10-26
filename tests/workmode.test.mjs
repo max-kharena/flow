@@ -233,7 +233,7 @@ test('pr-comments: threads review comments and marks the ones the author has not
   const env = fakeGh(`#!/bin/sh
 case "$1 $2" in
   "pr view") echo '${JSON.stringify(view)}' ;;
-  "api repos/{owner}/{repo}/pulls/7/comments") echo '${JSON.stringify(inline)}' ;;
+  "api repos/{owner}/{repo}/pulls/7/comments?per_page=100") echo '${JSON.stringify(inline)}' ;;
   *) exit 1 ;;
 esac
 `);

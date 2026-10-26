@@ -1,15 +1,15 @@
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { baseRef, git } from './git.mjs';
 import { readJson, readText } from './io.mjs';
 
-export const WORKTREES_DIR = '.worktrees';
+const WORKTREES_DIR = '.worktrees';
 
 const dirName = (branch) => branch.replace(/[^A-Za-z0-9._-]+/g, '-');
 
 // Worktree path checked out on `branch`, if any (`git worktree list` knows them all).
-export function worktreeFor(root, branch) {
+function worktreeFor(root, branch) {
   const list = git(root, ['worktree', 'list', '--porcelain']) ?? '';
   let path = null;
   for (const line of list.split('\n')) {
@@ -42,7 +42,7 @@ export function ensureWorktree({ root, commonDir }, branch, { base, baseBranch =
   const exists = (ref) => git(main, ['rev-parse', '--verify', '--quiet', ref]) !== null;
   const local = exists(`refs/heads/${branch}`);
   const remote = !local && exists(`refs/remotes/origin/${branch}`);
-  const from = base ?? baseRef(main, baseBranch);
+  const from = local || remote ? null : (base ?? baseRef(main, baseBranch));
   const args = local
     ? ['worktree', 'add', path, branch]
     : remote
@@ -50,18 +50,20 @@ export function ensureWorktree({ root, commonDir }, branch, { base, baseBranch =
       : ['worktree', 'add', '-b', branch, path, from];
   const res = spawnSync('git', args, { cwd: main, encoding: 'utf8' });
   if (res.status !== 0) return { ok: false, problems: [(res.stderr || 'git worktree add failed').trim()], branch, path };
-  return { ok: true, path, branch, created: true, newBranch: !local && !remote, tracking: remote ? `origin/${branch}` : null, base: local || remote ? null : from, ignoredNow };
+  return { ok: true, path, branch, created: true, newBranch: !local && !remote, tracking: remote ? `origin/${branch}` : null, base: from, ignoredNow };
 }
 
-const baselineFile = (commonDir, branch) => join(commonDir, 'flow', 'baseline', `${encodeURIComponent(branch)}.json`);
+// Per-branch records live under .git/flow/<kind>/, so they never show up in a diff.
+const branchFile = (commonDir, kind, branch, ext) => join(commonDir, 'flow', kind, `${encodeURIComponent(branch)}.${ext}`);
+const baselineFile = (commonDir, branch) => branchFile(commonDir, 'baseline', branch, 'json');
 
 export const readBaseline = (commonDir, branch) => readJson(baselineFile(commonDir, branch)) ?? { branch, runs: {} };
 
 // Runs one test command before any edit and records what already failed, so
 // later failures can be told apart from ones that were there at the start.
-export function recordBaseline({ commonDir }, branch, name, command, { cwd, timeoutMs = 15 * 60 * 1000 } = {}) {
+export function recordBaseline(commonDir, branch, name, command, cwd) {
   const started = Date.now();
-  const opts = { cwd, encoding: 'utf8', timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 };
+  const opts = { cwd, encoding: 'utf8', timeout: 15 * 60 * 1000, maxBuffer: 64 * 1024 * 1024 };
   const res = Array.isArray(command) ? spawnSync(command[0], command.slice(1), opts) : spawnSync(command, { ...opts, shell: true });
   const output = `${res.stdout ?? ''}${res.stderr ?? ''}`;
   const run = {
@@ -75,14 +77,15 @@ export function recordBaseline({ commonDir }, branch, name, command, { cwd, time
   };
   const baseline = readBaseline(commonDir, branch);
   baseline.runs[name] = run;
-  mkdirSync(join(commonDir, 'flow', 'baseline'), { recursive: true });
-  writeFileSync(baselineFile(commonDir, branch), `${JSON.stringify(baseline, null, 2)}\n`);
+  const file = baselineFile(commonDir, branch);
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, `${JSON.stringify(baseline, null, 2)}\n`);
   return { name, ...run };
 }
 
-export const LOG_COLUMNS = ['ts', 'phase', 'decision', 'why', 'evidence', 'result'];
+const LOG_COLUMNS = ['ts', 'phase', 'decision', 'why', 'evidence', 'result'];
 
-export const decisionLogFile = (commonDir, branch) => join(commonDir, 'flow', 'decisions', `${encodeURIComponent(branch)}.tsv`);
+const decisionLogFile = (commonDir, branch) => branchFile(commonDir, 'decisions', branch, 'tsv');
 
 // One line per cell, and no leading byte a spreadsheet would run as a formula.
 function cell(value) {
@@ -92,12 +95,11 @@ function cell(value) {
 
 const rowObject = (values) => Object.fromEntries(LOG_COLUMNS.map((c, i) => [c, values[i] ?? '']));
 
-// The branch's decision log lives under .git, so it never shows up in a diff.
-export function logDecision({ commonDir }, branch, fields, now = new Date()) {
+export function logDecision(commonDir, branch, fields) {
   const file = decisionLogFile(commonDir, branch);
   mkdirSync(dirname(file), { recursive: true });
-  const values = [now.toISOString(), ...LOG_COLUMNS.slice(1).map((_, i) => cell(fields[i]))];
-  appendFileSync(file, `${readText(file) ? '' : `${LOG_COLUMNS.join('\t')}\n`}${values.join('\t')}\n`);
+  const values = [new Date().toISOString(), ...LOG_COLUMNS.slice(1).map((_, i) => cell(fields[i]))];
+  appendFileSync(file, `${existsSync(file) ? '' : `${LOG_COLUMNS.join('\t')}\n`}${values.join('\t')}\n`);
   return { file, row: rowObject(values) };
 }
 

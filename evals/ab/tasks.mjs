@@ -1,11 +1,11 @@
 // The eval tasks: setup applied to a fresh copy of the playground, the prompt
 // both arms get, what Flow should do (expected gate and skills), and hidden
 // checks run on the result tree after the run. The agent never sees checks.
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { seededRandom, shopGit as git } from './lib.mjs';
 
-const git = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=Shop Dev', '-c', 'user.email=dev@shopkit.test', '-c', 'commit.gpgsign=false', ...args], { cwd, stdio: 'pipe', encoding: 'utf8' }).trim();
 const write = (repo, file, text) => {
   mkdirSync(join(repo, file, '..'), { recursive: true });
   writeFileSync(join(repo, file), text);
@@ -327,8 +327,7 @@ process.exit(1);
 export async function prepareHidden(hidden, templateRepo) {
   mkdirSync(hidden, { recursive: true });
   if (existsSync(join(hidden, 'T5-reference.csv'))) return;
-  let seed = 42;
-  const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const rnd = seededRandom(42);
   const countries = ['DE', 'FR', 'NL', 'GB', 'US'];
   const customers = Array.from({ length: 25000 }, (_, i) => ({ id: i + 1, name: `Customer ${String(i + 1).padStart(5, '0')}` }));
   const orders = Array.from({ length: 100000 }, (_, i) => ({

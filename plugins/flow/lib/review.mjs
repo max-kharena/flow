@@ -1,6 +1,6 @@
 import { parseJson } from './io.mjs';
 
-const isBot = (user) => user?.type === 'Bot' || /\[bot\]$/i.test(user?.login ?? '') || Boolean(user?.is_bot);
+export const isBot = (user) => user?.type === 'Bot' || /\[bot\]$/i.test(user?.login ?? '') || Boolean(user?.is_bot);
 
 // Every review comment on a PR as threads, for the review-replies skill.
 // `gh` is a function (args) => stdout or null. A thread is "open" when its
@@ -9,7 +9,7 @@ export function prThreads(gh, number) {
   const view = parseJson(gh(['pr', 'view', String(number), '--json', 'number,url,author,headRefName,reviews,comments']));
   if (!view) return null;
   const author = view.author?.login ?? null;
-  const inline = parseJson(gh(['api', `repos/{owner}/{repo}/pulls/${view.number}/comments`, '--paginate', '--slurp'])) ?? [];
+  const inline = parseJson(gh(['api', `repos/{owner}/{repo}/pulls/${view.number}/comments?per_page=100`, '--paginate', '--slurp'])) ?? [];
   const flat = inline.flat();
 
   const threads = new Map();
